@@ -1,0 +1,75 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Branch Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="branch-dashboard">
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2 id="branchTitle">Chi nhánh</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="/branch-dashboard.html" class="nav-link active">Dashboard</a>
+          <a href="/branch-employees.html" class="nav-link">Nhân viên</a>
+          <a href="/branch-invoices.html" class="nav-link">Hóa đơn</a>
+          <a href="/branch-inventory.html" class="nav-link">Tồn kho</a>
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tác vụ Cục bộ</p>
+            <h1>Dashboard chi nhánh</h1>
+          </div>
+        </header>
+
+        <section class="card" id="dashboard">
+          <div class="section-head">
+            <h2>Thống kê chi nhánh</h2>
+            <button class="ghost" id="refreshBranchDashboard">
+              Tai dashboard
+            </button>
+          </div>
+          <p class="api-line" id="dashboardApiLine"></p>
+          <div class="stats-grid" id="branchStatsGrid"></div>
+
+          <div class="chart-grid compact-top">
+            <article class="chart-card">
+              <h3>Doanh thu 7 ngay gan nhat</h3>
+              <canvas id="branchRevenueTrendChart"></canvas>
+            </article>
+            <article class="chart-card">
+              <h3>Top ton kho theo san pham</h3>
+              <canvas id="branchInventoryChart"></canvas>
+            </article>
+          </div>
+
+          <div class="section-head compact-top">
+            <h3>Insight chi nhánh</h3>
+          </div>
+          <pre class="result-box" id="branchDashboardDetail">
+Đang chờ du lieu...</pre
+          >
+        </section>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+

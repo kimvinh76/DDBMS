@@ -1,0 +1,116 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Branch Employees</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="branch-employees">
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2 id="branchTitle">Chi nhánh</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="/branch-dashboard.html" class="nav-link">Dashboard</a>
+          <a href="/branch-employees.html" class="nav-link active">Nhân viên</a>
+          <a href="/branch-invoices.html" class="nav-link">Hóa đơn</a>
+          <a href="/branch-inventory.html" class="nav-link">Tồn kho</a>
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tác vụ Cục bộ</p>
+            <h1>Quản lý nhan vien</h1>
+          </div>
+        </header>
+
+        <section class="card" id="employees">
+          <div class="section-head">
+            <h2>CRUD Nhân viên</h2>
+          </div>
+          <p class="api-line" id="employeesApiLine"></p>
+          <div class="crud-switch" id="employeesCrudSwitch">
+            <button class="crud-tab active" data-crud-target="create">
+              Create
+            </button>
+            <button class="crud-tab" data-crud-target="update">Update</button>
+            <button class="crud-tab" data-crud-target="delete">Delete</button>
+          </div>
+
+          <div class="crud-panel active" data-crud-panel="create">
+            <form id="employeeCreateForm" class="form-grid">
+              <label>
+                MaNV (tuy chon)
+                <input name="MaNV" placeholder="VD: H003" />
+              </label>
+              <label>
+                Họ tên
+                <input name="HoTen" required />
+              </label>
+              <label>
+                Chuc vu
+                <input name="ChucVu" required />
+              </label>
+              <button type="submit" class="primary">Thêm nhan vien</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="update">
+            <form id="employeeUpdateForm" class="form-grid compact-top">
+              <label>
+                MaNV can sua
+                <input name="employeeId" required />
+              </label>
+              <label>
+                Họ tên moi
+                <input name="HoTen" />
+              </label>
+              <label>
+                Chuc vu moi
+                <input name="ChucVu" />
+              </label>
+              <button type="submit" class="ghost">Cập nhật nhan vien</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="delete">
+            <form id="employeeDeleteForm" class="inline-form compact-top">
+              <label>
+                MaNV can xoa
+                <input name="employeeId" required />
+              </label>
+              <button type="submit" class="danger">Xóa nhan vien</button>
+            </form>
+          </div>
+
+          <div class="section-head compact-top">
+            <p class="hint">
+              Danh sach du lieu (luon hien thi) - click row de dien nhanh form
+              Update/Delete.
+            </p>
+            <button class="ghost" id="reloadEmployees">Tai danh sach</button>
+          </div>
+          <div class="table-wrap" id="employeesTableWrap"></div>
+
+          <pre class="result-box" id="employeeResult">Chưa co thao tac.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+

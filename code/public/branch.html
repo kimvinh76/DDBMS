@@ -1,0 +1,211 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DDBMS Demo - Branch Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="branch">
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2 id="branchTitle">Chi nhánh</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="#dashboard" class="nav-link">Dashboard</a>
+          <a href="#employees" class="nav-link">Nhân viên</a>
+          <a href="#invoices" class="nav-link">Hóa đơn</a>
+          <a href="#inventory" class="nav-link">Tồn kho</a>
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tác vụ Cục bộ</p>
+            <h1>Quản lý chi nhánh</h1>
+          </div>
+        </header>
+
+        <section class="card" id="dashboard">
+          <div class="section-head">
+            <h2>Dashboard Chi nhánh</h2>
+            <button class="ghost" id="refreshBranchDashboard">
+              Tai dashboard
+            </button>
+          </div>
+          <p class="api-line" id="dashboardApiLine"></p>
+          <div class="stats-grid" id="branchStatsGrid"></div>
+        </section>
+
+        <section class="card" id="employees">
+          <div class="section-head">
+            <h2>CRUD Nhân viên</h2>
+            <button class="ghost" id="reloadEmployees">Tai danh sach</button>
+          </div>
+          <p class="api-line" id="employeesApiLine"></p>
+          <p class="hint">
+            Mẹo: Click 1 dong trong bang de tu dien thong tin sua/xoa.
+          </p>
+          <form id="employeeCreateForm" class="form-grid">
+            <label>
+              MaNV (tuy chon)
+              <input name="MaNV" placeholder="VD: H003" />
+            </label>
+            <label>
+              Họ tên
+              <input name="HoTen" required />
+            </label>
+            <label>
+              Chuc vu
+              <input name="ChucVu" required />
+            </label>
+            <button type="submit" class="primary">Thêm nhan vien</button>
+          </form>
+          <form id="employeeUpdateForm" class="form-grid compact-top">
+            <label>
+              MaNV can sua
+              <input name="employeeId" required />
+            </label>
+            <label>
+              Họ tên moi
+              <input name="HoTen" />
+            </label>
+            <label>
+              Chuc vu moi
+              <input name="ChucVu" />
+            </label>
+            <button type="submit" class="ghost">Cập nhật nhan vien</button>
+          </form>
+          <form id="employeeDeleteForm" class="inline-form compact-top">
+            <label>
+              MaNV can xoa
+              <input name="employeeId" required />
+            </label>
+            <button type="submit" class="danger">Xóa nhan vien</button>
+          </form>
+          <div class="table-wrap" id="employeesTableWrap"></div>
+          <pre class="result-box" id="employeeResult">Chưa co thao tac.</pre>
+        </section>
+
+        <section class="card" id="invoices">
+          <div class="section-head">
+            <h2>CRUD Hóa đơn</h2>
+            <button class="ghost" id="reloadInvoices">Tai danh sach</button>
+          </div>
+          <p class="api-line" id="invoicesApiLine"></p>
+          <p class="hint">
+            Mẹo: Click row hoa don de dien nhanh MaHD can sua/xoa.
+          </p>
+          <form id="invoiceCreateForm" class="form-grid">
+            <label>
+              Ma san pham
+              <input name="productCode" placeholder="VD: MI_GOI" required />
+            </label>
+            <label>
+              So luong
+              <input type="number" name="quantity" min="1" required />
+            </label>
+            <label>
+              Tong tien
+              <input type="number" name="totalAmount" min="1" required />
+            </label>
+            <label class="full">
+              Ghi chu
+              <input name="note" placeholder="Khuyen mai cuoi tuan..." />
+            </label>
+            <button type="submit" class="primary">Thêm hoa don</button>
+          </form>
+          <form id="invoiceUpdateForm" class="form-grid compact-top">
+            <label>
+              MaHD can sua
+              <input name="invoiceId" required />
+            </label>
+            <label>
+              MaSP moi
+              <input name="productCode" />
+            </label>
+            <label>
+              So luong moi
+              <input type="number" name="quantity" min="1" />
+            </label>
+            <label>
+              Tong tien moi
+              <input type="number" name="totalAmount" min="1" />
+            </label>
+            <label>
+              Ghi chu moi
+              <input name="note" />
+            </label>
+            <button type="submit" class="ghost">Cập nhật hoa don</button>
+          </form>
+          <form id="invoiceDeleteForm" class="inline-form compact-top">
+            <label>
+              MaHD can xoa
+              <input name="invoiceId" required />
+            </label>
+            <button type="submit" class="danger">Xóa hoa don</button>
+          </form>
+          <div class="table-wrap" id="invoicesTableWrap"></div>
+          <pre class="result-box" id="invoiceResult">Chưa co thao tac.</pre>
+        </section>
+
+        <section class="card" id="inventory">
+          <div class="section-head">
+            <h2>CRUD Tồn kho</h2>
+            <button class="ghost" id="reloadInventory">Tai danh sach</button>
+          </div>
+          <p class="api-line" id="inventoryApiLine"></p>
+          <p class="hint">
+            Mẹo: Click row ton kho de dien nhanh MaSP can sua/xoa.
+          </p>
+          <form id="inventoryCreateForm" class="form-grid">
+            <label>
+              MaSP
+              <input name="productCode" required />
+            </label>
+            <label>
+              So luong ton
+              <input type="number" name="quantity" min="0" required />
+            </label>
+            <button type="submit" class="primary">Thêm san pham kho</button>
+          </form>
+          <form id="inventoryUpdateForm" class="form-grid compact-top">
+            <label>
+              MaSP can sua
+              <input name="productCode" required />
+            </label>
+            <label>
+              So luong ton moi
+              <input type="number" name="quantity" min="0" required />
+            </label>
+            <button type="submit" class="ghost">Cập nhật ton kho</button>
+          </form>
+          <form id="inventoryDeleteForm" class="inline-form compact-top">
+            <label>
+              MaSP can xoa
+              <input name="productCode" required />
+            </label>
+            <button type="submit" class="danger">Xóa san pham</button>
+          </form>
+          <div class="table-wrap" id="inventoryTableWrap"></div>
+          <pre class="result-box" id="inventoryResult">Chưa co thao tac.</pre>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+

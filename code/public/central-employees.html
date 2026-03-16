@@ -1,0 +1,159 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Central CRUD Employees</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="central-employees">
+    <main class="app-shell">
+      <aside class="sidebar sidebar-central">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2>Central Console</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="/central-overview.html" class="nav-link">Tổng quan</a>
+          <a href="/central-employees.html" class="nav-link active"
+            >CRUD Nhân viên</a
+          >
+          <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
+          <a href="/central-inventory.html" class="nav-link">CRUD Tồn kho</a>
+          <a href="/central-transfer.html" class="nav-link">Luân chuyển hang</a>
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tác vụ Toàn cục</p>
+            <h1>Central CRUD Nhân viên</h1>
+          </div>
+        </header>
+
+        <section class="card" id="central-employees-crud">
+          <div class="section-head">
+            <h2>CRUD Nhân viên theo chi nhánh</h2>
+          </div>
+          <p class="api-line">
+            /api/employees, /api/employees/:employeeId?branch=...
+          </p>
+          <div class="crud-switch" id="centralEmployeesCrudSwitch">
+            <button class="crud-tab active" data-crud-target="create">
+              Create
+            </button>
+            <button class="crud-tab" data-crud-target="update">Update</button>
+            <button class="crud-tab" data-crud-target="delete">Delete</button>
+          </div>
+
+          <div class="crud-panel active" data-crud-panel="create">
+            <form id="centralEmployeeCreateForm" class="form-grid">
+              <label>
+                Chi nhánh
+                <select name="branch" required>
+                  <option value="HUE">HUE</option>
+                  <option value="SAIGON">SAIGON</option>
+                  <option value="HANOI">HANOI</option>
+                </select>
+              </label>
+              <label>
+                MaNV (tuy chon)
+                <input name="MaNV" placeholder="VD: H003" />
+              </label>
+              <label>
+                Họ tên
+                <input name="HoTen" required />
+              </label>
+              <label>
+                Chuc vu
+                <input name="ChucVu" required />
+              </label>
+              <button type="submit" class="primary">Create Nhân viên</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="update">
+            <form id="centralEmployeeUpdateForm" class="form-grid compact-top">
+              <label>
+                Chi nhánh
+                <select name="branch" required>
+                  <option value="HUE">HUE</option>
+                  <option value="SAIGON">SAIGON</option>
+                  <option value="HANOI">HANOI</option>
+                </select>
+              </label>
+              <label>
+                MaNV can sua
+                <input name="employeeId" required />
+              </label>
+              <label>
+                Họ tên moi
+                <input name="HoTen" />
+              </label>
+              <label>
+                Chuc vu moi
+                <input name="ChucVu" />
+              </label>
+              <button type="submit" class="ghost">Update Nhân viên</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="delete">
+            <form
+              id="centralEmployeeDeleteForm"
+              class="inline-form compact-top"
+            >
+              <label>
+                Chi nhánh
+                <select name="branch" required>
+                  <option value="HUE">HUE</option>
+                  <option value="SAIGON">SAIGON</option>
+                  <option value="HANOI">HANOI</option>
+                </select>
+              </label>
+              <label>
+                MaNV can xoa
+                <input name="employeeId" required />
+              </label>
+              <button type="submit" class="danger">Delete Nhân viên</button>
+            </form>
+          </div>
+
+          <div class="section-head compact-top">
+            <h3>Du lieu nhan vien theo chi nhánh</h3>
+            <div class="inline-form">
+              <label>
+                Xem chi nhánh
+                <select id="centralEmployeesReadBranch">
+                  <option value="HUE">HUE</option>
+                  <option value="SAIGON">SAIGON</option>
+                  <option value="HANOI">HANOI</option>
+                </select>
+              </label>
+              <button class="ghost" id="loadCentralEmployees">
+                Tai danh sach
+              </button>
+            </div>
+          </div>
+          <p class="hint">Click row de tu dien form Update/Delete.</p>
+          <div class="table-wrap" id="centralEmployeesTableWrap"></div>
+          <pre class="result-box" id="centralEmployeeResult">
+Chưa co thao tac.</pre
+          >
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+

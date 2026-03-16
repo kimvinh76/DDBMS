@@ -1,0 +1,89 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Central Transfer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="central-transfer">
+    <main class="app-shell">
+      <aside class="sidebar sidebar-central">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2>Central Console</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="/central-overview.html" class="nav-link">Tổng quan</a>
+          <a href="/central-employees.html" class="nav-link">CRUD Nhân viên</a>
+          <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
+          <a href="/central-inventory.html" class="nav-link">CRUD Tồn kho</a>
+          <a href="/central-transfer.html" class="nav-link active"
+            >Luân chuyển hang</a
+          >
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tác vụ Toàn cục</p>
+            <h1>Luân chuyển hang hoa</h1>
+          </div>
+        </header>
+
+        <section class="card" id="stock-transfer">
+          <h2>Distributed Transaction</h2>
+          <p class="api-line">
+            POST /api/transfer-stock + BEGIN DISTRIBUTED TRANSACTION
+          </p>
+          <form id="transferForm" class="form-grid transfer-grid">
+            <label>
+              Tu chi nhánh
+              <select name="fromBranch" required>
+                <option value="HUE">HUE</option>
+                <option value="SAIGON">SAIGON</option>
+                <option value="HANOI">HANOI</option>
+              </select>
+            </label>
+            <label>
+              Sang chi nhánh
+              <select name="toBranch" required>
+                <option value="SAIGON">SAIGON</option>
+                <option value="HANOI">HANOI</option>
+                <option value="HUE">HUE</option>
+              </select>
+            </label>
+            <label>
+              Ma san pham
+              <input name="productCode" value="MI_GOI" required />
+            </label>
+            <label>
+              So luong
+              <input
+                type="number"
+                min="1"
+                name="quantity"
+                value="50"
+                required
+              />
+            </label>
+            <button type="submit" class="primary">Thuc thi giao dich</button>
+          </form>
+          <pre class="result-box" id="transferResult">Chưa co thao tac.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+

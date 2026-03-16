@@ -1,0 +1,128 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Branch Invoices</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="branch-invoices">
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2 id="branchTitle">Chi nhánh</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="/branch-dashboard.html" class="nav-link">Dashboard</a>
+          <a href="/branch-employees.html" class="nav-link">Nhân viên</a>
+          <a href="/branch-invoices.html" class="nav-link active">Hóa đơn</a>
+          <a href="/branch-inventory.html" class="nav-link">Tồn kho</a>
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tác vụ Cục bộ</p>
+            <h1>Quản lý hoa don</h1>
+          </div>
+        </header>
+
+        <section class="card" id="invoices">
+          <div class="section-head">
+            <h2>CRUD Hóa đơn</h2>
+          </div>
+          <p class="api-line" id="invoicesApiLine"></p>
+          <div class="crud-switch" id="invoicesCrudSwitch">
+            <button class="crud-tab active" data-crud-target="create">
+              Create
+            </button>
+            <button class="crud-tab" data-crud-target="update">Update</button>
+            <button class="crud-tab" data-crud-target="delete">Delete</button>
+          </div>
+
+          <div class="crud-panel active" data-crud-panel="create">
+            <form id="invoiceCreateForm" class="form-grid">
+              <label>
+                Ma san pham
+                <input name="productCode" placeholder="VD: MI_GOI" required />
+              </label>
+              <label>
+                So luong
+                <input type="number" name="quantity" min="1" required />
+              </label>
+              <label>
+                Tong tien
+                <input type="number" name="totalAmount" min="1" required />
+              </label>
+              <label class="full">
+                Ghi chu
+                <input name="note" placeholder="Khuyen mai cuoi tuan..." />
+              </label>
+              <button type="submit" class="primary">Thêm hoa don</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="update">
+            <form id="invoiceUpdateForm" class="form-grid compact-top">
+              <label>
+                MaHD can sua
+                <input name="invoiceId" required />
+              </label>
+              <label>
+                MaSP moi
+                <input name="productCode" />
+              </label>
+              <label>
+                So luong moi
+                <input type="number" name="quantity" min="1" />
+              </label>
+              <label>
+                Tong tien moi
+                <input type="number" name="totalAmount" min="1" />
+              </label>
+              <label>
+                Ghi chu moi
+                <input name="note" />
+              </label>
+              <button type="submit" class="ghost">Cập nhật hoa don</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="delete">
+            <form id="invoiceDeleteForm" class="inline-form compact-top">
+              <label>
+                MaHD can xoa
+                <input name="invoiceId" required />
+              </label>
+              <button type="submit" class="danger">Xóa hoa don</button>
+            </form>
+          </div>
+
+          <div class="section-head compact-top">
+            <p class="hint">
+              Danh sach du lieu (luon hien thi) - click row de dien nhanh form
+              Update/Delete.
+            </p>
+            <button class="ghost" id="reloadInvoices">Tai danh sach</button>
+          </div>
+          <div class="table-wrap" id="invoicesTableWrap"></div>
+
+          <pre class="result-box" id="invoiceResult">Chưa co thao tac.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
+
+
