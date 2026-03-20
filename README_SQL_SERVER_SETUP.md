@@ -14,7 +14,9 @@
 2. Chay lenh:
 
 ```bash
+cd code
 npm install
+npm run dev
 ```
 
 ## 3. Tao schema va seed du lieu
