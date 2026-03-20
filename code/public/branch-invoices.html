@@ -52,8 +52,20 @@
           <div class="crud-panel active" data-crud-panel="create">
             <form id="invoiceCreateForm" class="form-grid">
               <label>
+                Ma nhan vien
+                <input name="employeeId" placeholder="VD: H001" />
+              </label>
+              <label>
                 Ma san pham
                 <input name="productCode" placeholder="VD: MI_GOI" required />
+              </label>
+              <label>
+                Ten hang
+                <input name="productName" placeholder="VD: Mi goi" />
+              </label>
+              <label>
+                Don gia
+                <input type="number" name="unitPrice" min="0" />
               </label>
               <label>
                 So luong
@@ -61,7 +73,7 @@
               </label>
               <label>
                 Tong tien
-                <input type="number" name="totalAmount" min="1" required />
+                <input type="number" name="totalAmount" min="0" readonly />
               </label>
               <label class="full">
                 Ghi chu
@@ -78,8 +90,20 @@
                 <input name="invoiceId" required />
               </label>
               <label>
+                MaNV moi
+                <input name="employeeId" />
+              </label>
+              <label>
                 MaSP moi
                 <input name="productCode" />
+              </label>
+              <label>
+                Ten hang moi
+                <input name="productName" />
+              </label>
+              <label>
+                Don gia moi
+                <input type="number" name="unitPrice" min="0" />
               </label>
               <label>
                 So luong moi
@@ -87,7 +111,7 @@
               </label>
               <label>
                 Tong tien moi
-                <input type="number" name="totalAmount" min="1" />
+                <input type="number" name="totalAmount" min="0" readonly />
               </label>
               <label>
                 Ghi chu moi

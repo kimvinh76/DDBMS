@@ -65,8 +65,20 @@
                 </select>
               </label>
               <label>
+                MaNV
+                <input name="employeeId" placeholder="VD: H001" />
+              </label>
+              <label>
                 MaSP
                 <input name="productCode" required />
+              </label>
+              <label>
+                Ten hang
+                <input name="productName" />
+              </label>
+              <label>
+                Don gia
+                <input type="number" min="0" name="unitPrice" />
               </label>
               <label>
                 So luong
@@ -74,7 +86,7 @@
               </label>
               <label>
                 Tong tien
-                <input type="number" min="1" name="totalAmount" required />
+                <input type="number" min="0" name="totalAmount" readonly />
               </label>
               <label>
                 Ghi chu
@@ -99,8 +111,20 @@
                 <input name="invoiceId" required />
               </label>
               <label>
+                MaNV moi
+                <input name="employeeId" />
+              </label>
+              <label>
                 MaSP moi
                 <input name="productCode" />
+              </label>
+              <label>
+                Ten hang moi
+                <input name="productName" />
+              </label>
+              <label>
+                Don gia moi
+                <input type="number" min="0" name="unitPrice" />
               </label>
               <label>
                 So luong moi
@@ -108,7 +132,7 @@
               </label>
               <label>
                 Tong tien moi
-                <input type="number" min="1" name="totalAmount" />
+                <input type="number" min="0" name="totalAmount" readonly />
               </label>
               <label>
                 Ghi chu moi

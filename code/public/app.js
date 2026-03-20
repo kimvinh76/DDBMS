@@ -143,6 +143,21 @@ function renderTable(wrapper, rows, options = {}) {
   }
 }
 
+function hideColumns(rows, columnNames = []) {
+  if (!Array.isArray(rows) || rows.length === 0 || columnNames.length === 0) {
+    return rows;
+  }
+
+  const hidden = new Set(columnNames.map((name) => String(name).toLowerCase()));
+  return rows.map((row) =>
+    Object.fromEntries(
+      Object.entries(row).filter(
+        ([column]) => !hidden.has(String(column).toLowerCase()),
+      ),
+    ),
+  );
+}
+
 async function fetchJSON(url, options) {
   const response = await fetch(url, options);
   const data = await response.json();
@@ -154,6 +169,66 @@ async function fetchJSON(url, options) {
 
 function formatNumber(value) {
   return new Intl.NumberFormat("vi-VN").format(Number(value || 0));
+}
+
+function attachAutoTotal(form) {
+  if (!form || !form.elements.unitPrice || !form.elements.quantity || !form.elements.totalAmount) {
+    return;
+  }
+
+  const recompute = () => {
+    const unitPrice = Number(form.elements.unitPrice.value || 0);
+    const quantity = Number(form.elements.quantity.value || 0);
+    form.elements.totalAmount.value =
+      unitPrice > 0 && quantity > 0 ? String(unitPrice * quantity) : "";
+  };
+
+  form.elements.unitPrice.addEventListener("input", recompute);
+  form.elements.quantity.addEventListener("input", recompute);
+  recompute();
+}
+
+function attachInvoiceProductAutoFill(form, resolveBranch, resultBox) {
+  if (!form || !form.elements.productCode || !form.elements.unitPrice) {
+    return;
+  }
+
+  const fillFromProductCode = async () => {
+    const productCode = String(form.elements.productCode.value || "").trim();
+    const branch = String(resolveBranch() || "").trim();
+    if (!productCode || !branch) {
+      return;
+    }
+
+    try {
+      const product = await fetchJSON(
+        `/api/products/${encodeURIComponent(productCode)}?branch=${branch}`,
+      );
+      form.elements.unitPrice.value = String(product.unitPrice ?? "");
+      if (
+        form.elements.productName &&
+        !String(form.elements.productName.value || "").trim()
+      ) {
+        form.elements.productName.value = String(product.productName || "");
+      }
+      form.elements.unitPrice.dispatchEvent(new Event("input"));
+    } catch (error) {
+      if (String(error.message || "").toLowerCase().includes("not found")) {
+        form.elements.unitPrice.value = "";
+        form.elements.unitPrice.dispatchEvent(new Event("input"));
+      }
+      if (resultBox) {
+        resultBox.textContent = `Lỗi: ${error.message}`;
+      }
+    }
+  };
+
+  form.elements.productCode.addEventListener("blur", () => {
+    fillFromProductCode().catch(() => {});
+  });
+  form.elements.productCode.addEventListener("change", () => {
+    fillFromProductCode().catch(() => {});
+  });
 }
 
 function renderStatsGrid(wrapper, stats) {
@@ -323,7 +398,7 @@ async function setupBranchEmployeesPage() {
     employeesTableWrap.innerHTML =
       '<p class="subtitle">Đang tải du lieu...</p>';
     const result = await fetchJSON(`/api/employees?branch=${branch}`);
-    renderTable(employeesTableWrap, result.data, {
+    renderTable(employeesTableWrap, hideColumns(result.data, ["rowguid", "rowid"]), {
       tableId: "employees",
       emptyMessage: "Chưa co nhan vien nao trong chi nhánh.",
       onRowSelect: (row) => {
@@ -428,6 +503,11 @@ async function setupBranchInvoicesPage() {
   const invoiceResult = document.getElementById("invoiceResult");
   const invoiceUpdateForm = document.getElementById("invoiceUpdateForm");
   const invoiceDeleteForm = document.getElementById("invoiceDeleteForm");
+  const invoiceCreateForm = document.getElementById("invoiceCreateForm");
+
+  attachAutoTotal(invoiceCreateForm);
+  attachAutoTotal(invoiceUpdateForm);
+  attachInvoiceProductAutoFill(invoiceCreateForm, () => branch, invoiceResult);
 
   invoicesApiLine.textContent = `GET /api/invoices?branch=${branch}`;
 
@@ -440,7 +520,11 @@ async function setupBranchInvoicesPage() {
       onRowSelect: (row) => {
         invoiceUpdateForm.elements.invoiceId.value = row.MaHD || "";
         invoiceDeleteForm.elements.invoiceId.value = row.MaHD || "";
+        invoiceUpdateForm.elements.employeeId.value = row.MaNV || "";
         invoiceUpdateForm.elements.productCode.value = row.MaSP || "";
+        invoiceUpdateForm.elements.productName.value = row.TenHang || "";
+        invoiceUpdateForm.elements.unitPrice.value =
+          row.DonGia ?? row.Gia ?? "";
         invoiceUpdateForm.elements.quantity.value = row.SoLuong || "";
         invoiceUpdateForm.elements.totalAmount.value = row.TongTien || "";
         invoiceUpdateForm.elements.note.value = row.GhiChu || "";
@@ -454,16 +538,19 @@ async function setupBranchInvoicesPage() {
     });
   });
 
-  document
-    .getElementById("invoiceCreateForm")
-    .addEventListener("submit", async (event) => {
+  invoiceCreateForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = new FormData(event.target);
+      const unitPrice = Number(form.get("unitPrice") || 0);
+      const quantity = Number(form.get("quantity") || 0);
       const payload = {
         branch,
         productCode: form.get("productCode"),
-        quantity: Number(form.get("quantity")),
-        totalAmount: Number(form.get("totalAmount")),
+        employeeId: String(form.get("employeeId") || "").trim(),
+        productName: String(form.get("productName") || "").trim(),
+        unitPrice,
+        quantity,
+        totalAmount: unitPrice * quantity,
         note: form.get("note"),
       };
 
@@ -485,10 +572,15 @@ async function setupBranchInvoicesPage() {
     event.preventDefault();
     const form = new FormData(event.target);
     const invoiceId = String(form.get("invoiceId") || "").trim();
+    const unitPrice = Number(form.get("unitPrice") || 0);
+    const quantity = Number(form.get("quantity") || 0);
     const payload = {
       productCode: String(form.get("productCode") || "").trim(),
-      quantity: Number(form.get("quantity") || 0),
-      totalAmount: Number(form.get("totalAmount") || 0),
+      employeeId: String(form.get("employeeId") || "").trim(),
+      productName: String(form.get("productName") || "").trim(),
+      unitPrice,
+      quantity,
+      totalAmount: unitPrice * quantity,
       note: String(form.get("note") || ""),
     };
     try {
@@ -757,7 +849,7 @@ async function setupCentralEmployeesPage() {
     const branch = readBranch.value;
     tableWrap.innerHTML = '<p class="subtitle">Đang tải nhan vien...</p>';
     const result = await fetchJSON(`/api/employees?branch=${branch}`);
-    renderTable(tableWrap, result.data, {
+    renderTable(tableWrap, hideColumns(result.data, ["rowguid", "rowid"]), {
       tableId: "central-local-employees",
       emptyMessage: "Chưa co nhan vien nao o chi nhánh nay.",
       onRowSelect: (row) => {
@@ -884,6 +976,14 @@ async function setupCentralInvoicesPage() {
   const updateForm = document.getElementById("centralInvoiceUpdateForm");
   const deleteForm = document.getElementById("centralInvoiceDeleteForm");
 
+  attachAutoTotal(createForm);
+  attachAutoTotal(updateForm);
+  attachInvoiceProductAutoFill(
+    createForm,
+    () => String(createForm.elements.branch.value || ""),
+    resultBox,
+  );
+
   function syncFormsBranch(branch) {
     createForm.elements.branch.value = branch;
     updateForm.elements.branch.value = branch;
@@ -901,7 +1001,10 @@ async function setupCentralInvoicesPage() {
         syncFormsBranch(row.ChiNhanh || branch);
         updateForm.elements.invoiceId.value = row.MaHD || "";
         deleteForm.elements.invoiceId.value = row.MaHD || "";
+        updateForm.elements.employeeId.value = row.MaNV || "";
         updateForm.elements.productCode.value = row.MaSP || "";
+        updateForm.elements.productName.value = row.TenHang || "";
+        updateForm.elements.unitPrice.value = row.DonGia ?? row.Gia ?? "";
         updateForm.elements.quantity.value = row.SoLuong || "";
         updateForm.elements.totalAmount.value = row.TongTien || "";
         updateForm.elements.note.value = row.GhiChu || "";
@@ -928,11 +1031,16 @@ async function setupCentralInvoicesPage() {
   createForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(createForm);
+    const unitPrice = Number(form.get("unitPrice") || 0);
+    const quantity = Number(form.get("quantity") || 0);
     const payload = {
       branch: form.get("branch"),
       productCode: form.get("productCode"),
-      quantity: Number(form.get("quantity") || 0),
-      totalAmount: Number(form.get("totalAmount") || 0),
+      employeeId: String(form.get("employeeId") || "").trim(),
+      productName: String(form.get("productName") || "").trim(),
+      unitPrice,
+      quantity,
+      totalAmount: unitPrice * quantity,
       note: form.get("note"),
     };
     try {
@@ -956,10 +1064,15 @@ async function setupCentralInvoicesPage() {
     const form = new FormData(updateForm);
     const branch = String(form.get("branch"));
     const invoiceId = String(form.get("invoiceId") || "").trim();
+    const unitPrice = Number(form.get("unitPrice") || 0);
+    const quantity = Number(form.get("quantity") || 0);
     const payload = {
       productCode: String(form.get("productCode") || "").trim(),
-      quantity: Number(form.get("quantity") || 0),
-      totalAmount: Number(form.get("totalAmount") || 0),
+      employeeId: String(form.get("employeeId") || "").trim(),
+      productName: String(form.get("productName") || "").trim(),
+      unitPrice,
+      quantity,
+      totalAmount: unitPrice * quantity,
       note: String(form.get("note") || ""),
     };
     try {
