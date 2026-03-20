@@ -20,7 +20,7 @@ npm install
 ## 3. Tao schema va seed du lieu
 
 1. Mo file code/SQLQuery3.sql bang SSMS
-2. Chay toan bo script
+2. Chay  script tạo các db trên các server khác nhau
 3. Script se tao/lam moi bang theo mo hinh:
    - ChiNhanh
    - NhanVien
