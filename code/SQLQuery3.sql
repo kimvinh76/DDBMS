@@ -1,8 +1,8 @@
 
 
-/*   tạo 4 db ở 4 server khác nhau, mỗi db sẽ chứa dữ liệu của 1 chi nhánh, db thứ 4 sẽ là db trung tâm để tổng hợp dữ liệu từ 3 chi nhánh*/
+/*   tạo 4 db ở 4 server khác nhau, mỗi db sẽ chứa dữ liệu của 1 chi nhánh, db Central ở server trung tâm sẽ là db trung tâm để tổng hợp dữ liệu từ 3 chi nhánh*/
 /*    sau đó thực hiện publication,subscription như hướng dẫn trong tài liệu mẫu, dữ liệu từ server central sẽ được đổ về 3 server con theo phân mảnh ngang MaChiNhanh */
-
+/*   có thể chỉ tạo 1 db Central rồi làm publication,subscription để dữ liệu tự gửi về server con */
 
 /*   BRANCH: HUE (Store_H) */
 USE Store_H;
