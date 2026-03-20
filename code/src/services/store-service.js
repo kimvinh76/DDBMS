@@ -15,6 +15,90 @@ function linkedServerNames() {
   };
 }
 
+async function hasHoaDonEmployeeColumnWithPool(pool) {
+  const rs = await pool
+    .request()
+    .query("SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;");
+  return Boolean((rs.recordset[0] || {}).hasColumn);
+}
+
+async function hasHoaDonEmployeeColumnWithTransaction(transaction) {
+  const rs = await new sql.Request(transaction)
+    .query("SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;");
+  return Boolean((rs.recordset[0] || {}).hasColumn);
+}
+
+async function ensureEmployeeExists(transaction, branch, employeeId) {
+  if (!employeeId) {
+    return;
+  }
+
+  const rs = await new sql.Request(transaction)
+    .input("MaNV", sql.VarChar(50), employeeId)
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .query(`
+      SELECT TOP 1 MaNV
+      FROM NhanVien
+      WHERE MaNV = @MaNV AND ChiNhanh = @ChiNhanh;
+    `);
+
+  if (!rs.recordset.length) {
+    throw new Error(`Employee ${employeeId} not found in ${branch}`);
+  }
+}
+
+async function getStockByBranch(transaction, branch, productCode) {
+  const rs = await new sql.Request(transaction)
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .input("MaSP", sql.VarChar(50), productCode)
+    .query(`
+      SELECT TOP 1 SoLuongTon
+      FROM TonKho
+      WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;
+    `);
+  return Number((rs.recordset[0] || {}).SoLuongTon);
+}
+
+async function deductStock(transaction, branch, productCode, quantity) {
+  const current = await getStockByBranch(transaction, branch, productCode);
+  if (!Number.isFinite(current)) {
+    throw new Error(`Product ${productCode} not found in inventory ${branch}`);
+  }
+  if (current < quantity) {
+    throw new Error(
+      `Insufficient stock for ${productCode} in ${branch}: current ${current}, required ${quantity}`,
+    );
+  }
+
+  await new sql.Request(transaction)
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .input("MaSP", sql.VarChar(50), productCode)
+    .input("SoLuong", sql.Int, quantity)
+    .query(`
+      UPDATE TonKho
+      SET SoLuongTon = SoLuongTon - @SoLuong
+      WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;
+    `);
+}
+
+async function addStock(transaction, branch, productCode, quantity) {
+  await new sql.Request(transaction)
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .input("MaSP", sql.VarChar(50), productCode)
+    .input("SoLuong", sql.Int, quantity)
+    .query(`
+      UPDATE TonKho
+      SET SoLuongTon = SoLuongTon + @SoLuong
+      WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;
+
+      IF @@ROWCOUNT = 0
+      BEGIN
+        INSERT INTO TonKho (MaSP, SoLuongTon, ChiNhanh)
+        VALUES (@MaSP, @SoLuong, @ChiNhanh);
+      END
+    `);
+}
+
 async function listEmployeesByBranch(branch) {
   if (isMockMode()) {
     return mock.listEmployeesByBranch(branch);
@@ -30,21 +114,23 @@ async function createEmployee(branch, payload) {
     return mock.createEmployee(branch, payload);
   }
 
+  const maNV = payload.MaNV || `${branch[0]}${String(Date.now()).slice(-4)}`;
   const pool = await getPool(branch);
-  const result = await pool
+  await pool
     .request()
-    .input(
-      "MaNV",
-      sql.VarChar(50),
-      payload.MaNV || `${branch[0]}${String(Date.now()).slice(-4)}`,
-    )
+    .input("MaNV", sql.VarChar(50), maNV)
+    .input("ChiNhanh", sql.VarChar(10), branch)
     .input("HoTen", sql.NVarChar(120), payload.HoTen)
     .input("ChucVu", sql.NVarChar(80), payload.ChucVu).query(`
-      INSERT INTO NhanVien (MaNV, HoTen, ChucVu)
-      OUTPUT inserted.*
-      VALUES (@MaNV, @HoTen, @ChucVu);
+      INSERT INTO NhanVien (MaNV, HoTen, ChucVu, ChiNhanh)
+      VALUES (@MaNV, @HoTen, @ChucVu, @ChiNhanh);
     `);
-  return result.recordset[0];
+
+  const inserted = await pool
+    .request()
+    .input("MaNV", sql.VarChar(50), maNV)
+    .query("SELECT TOP 1 * FROM NhanVien WHERE MaNV = @MaNV;");
+  return inserted.recordset[0];
 }
 
 async function updateEmployee(branch, employeeId, payload) {
@@ -53,7 +139,7 @@ async function updateEmployee(branch, employeeId, payload) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
+  await pool
     .request()
     .input("MaNV", sql.VarChar(50), employeeId)
     .input("HoTen", sql.NVarChar(120), payload.HoTen || null)
@@ -61,13 +147,18 @@ async function updateEmployee(branch, employeeId, payload) {
       UPDATE NhanVien
       SET HoTen = COALESCE(@HoTen, HoTen),
           ChucVu = COALESCE(@ChucVu, ChucVu)
-      OUTPUT inserted.*
       WHERE MaNV = @MaNV;
     `);
-  if (!result.recordset.length) {
+
+  const updated = await pool
+    .request()
+    .input("MaNV", sql.VarChar(50), employeeId)
+    .query("SELECT TOP 1 * FROM NhanVien WHERE MaNV = @MaNV;");
+
+  if (!updated.recordset.length) {
     throw new Error(`Employee ${employeeId} not found in ${branch}`);
   }
-  return result.recordset[0];
+  return updated.recordset[0];
 }
 
 async function deleteEmployee(branch, employeeId) {
@@ -76,14 +167,21 @@ async function deleteEmployee(branch, employeeId) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
+  const beforeDelete = await pool
     .request()
     .input("MaNV", sql.VarChar(50), employeeId)
-    .query("DELETE FROM NhanVien OUTPUT deleted.* WHERE MaNV = @MaNV;");
-  if (!result.recordset.length) {
+    .query("SELECT TOP 1 * FROM NhanVien WHERE MaNV = @MaNV;");
+
+  if (!beforeDelete.recordset.length) {
     throw new Error(`Employee ${employeeId} not found in ${branch}`);
   }
-  return result.recordset[0];
+
+  await pool
+    .request()
+    .input("MaNV", sql.VarChar(50), employeeId)
+    .query("DELETE FROM NhanVien WHERE MaNV = @MaNV;");
+
+  return beforeDelete.recordset[0];
 }
 
 async function listInvoicesByBranch(branch) {
@@ -92,9 +190,46 @@ async function listInvoicesByBranch(branch) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
-    .request()
-    .query("SELECT * FROM HoaDon ORDER BY NgayTao DESC;");
+  const hasMaNV = await hasHoaDonEmployeeColumnWithPool(pool);
+  const query = hasMaNV
+    ? `
+      SELECT
+        hd.MaHD,
+        ctd.MaSP,
+        ctd.SoLuong,
+        CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS TongTien,
+        hd.GhiChu,
+        hd.NgayTao,
+        hd.ChiNhanh,
+        hd.MaNV,
+        nv.HoTen AS HoTenNhanVien,
+        hh.TenHang,
+        ctd.DonGia
+      FROM HoaDon hd
+      INNER JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
+      LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+      LEFT JOIN NhanVien nv ON nv.MaNV = hd.MaNV
+      ORDER BY hd.NgayTao DESC;
+    `
+    : `
+      SELECT
+        hd.MaHD,
+        ctd.MaSP,
+        ctd.SoLuong,
+        CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS TongTien,
+        hd.GhiChu,
+        hd.NgayTao,
+        hd.ChiNhanh,
+        NULL AS MaNV,
+        NULL AS HoTenNhanVien,
+        hh.TenHang,
+        ctd.DonGia
+      FROM HoaDon hd
+      INNER JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
+      LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+      ORDER BY hd.NgayTao DESC;
+    `;
+  const result = await pool.request().query(query);
   return result.recordset;
 }
 
@@ -104,19 +239,116 @@ async function createInvoice(payload) {
   }
 
   const pool = await getPool(payload.branch);
-  const result = await pool
-    .request()
-    .input("MaHD", sql.VarChar(50), `HD_${Date.now()}`)
-    .input("MaSP", sql.VarChar(50), payload.productCode)
-    .input("SoLuong", sql.Int, payload.quantity)
-    .input("TongTien", sql.Decimal(18, 2), payload.totalAmount)
-    .input("GhiChu", sql.NVarChar(255), payload.note).query(`
-      INSERT INTO HoaDon (MaHD, MaSP, SoLuong, TongTien, GhiChu, NgayTao)
-      OUTPUT inserted.*
-      VALUES (@MaHD, @MaSP, @SoLuong, @TongTien, @GhiChu, GETDATE());
-    `);
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
 
-  return result.recordset[0];
+  try {
+    const hasMaNV = await hasHoaDonEmployeeColumnWithTransaction(transaction);
+    const employeeId = String(payload.employeeId || "").trim() || null;
+    const maHD = `HD_${Date.now()}`;
+    const productRs = await new sql.Request(transaction)
+      .input("MaSP", sql.VarChar(50), payload.productCode)
+      .query(`
+        SELECT TOP 1 TenHang, Gia
+        FROM dbo.HangHoa
+        WHERE MaSP = @MaSP;
+      `);
+    const product = productRs.recordset[0] || null;
+    const unitPrice =
+      payload.unitPrice > 0
+        ? payload.unitPrice
+        : Number(product?.Gia || 0);
+    if (unitPrice <= 0) {
+      throw new Error(
+        `Cannot resolve unit price for product ${payload.productCode}. Please input unitPrice or define Gia in HangHoa first.`,
+      );
+    }
+    const productName =
+      payload.productName || product?.TenHang || payload.productCode;
+    const totalAmount = Number(payload.quantity || 0) * Number(unitPrice || 0);
+
+    // If HoaDon.MaNV exists, enforce that submitted employee belongs to that branch.
+    if (hasMaNV) {
+      await ensureEmployeeExists(transaction, payload.branch, employeeId);
+    }
+
+    await new sql.Request(transaction)
+      .input("MaSP", sql.VarChar(50), payload.productCode)
+      .input("TenHang", sql.NVarChar(100), productName)
+      .input("Gia", sql.Decimal(10, 2), unitPrice).query(`
+        IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+        BEGIN
+          IF EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
+          BEGIN
+            UPDATE dbo.HangHoa
+            SET TenHang = @TenHang
+            WHERE MaSP = @MaSP;
+          END
+          ELSE
+          BEGIN
+            INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia)
+            VALUES (@MaSP, @TenHang, @Gia);
+          END
+        END
+      `);
+
+    if (hasMaNV) {
+      await new sql.Request(transaction)
+        .input("MaHD", sql.VarChar(50), maHD)
+        .input("GhiChu", sql.NVarChar(255), payload.note)
+        .input("ChiNhanh", sql.VarChar(10), payload.branch)
+        .input("MaNV", sql.VarChar(50), employeeId)
+        .query(`
+          INSERT INTO HoaDon (MaHD, GhiChu, NgayTao, ChiNhanh, MaNV)
+          VALUES (@MaHD, @GhiChu, GETDATE(), @ChiNhanh, @MaNV);
+        `);
+    } else {
+      await new sql.Request(transaction)
+        .input("MaHD", sql.VarChar(50), maHD)
+        .input("GhiChu", sql.NVarChar(255), payload.note)
+        .input("ChiNhanh", sql.VarChar(10), payload.branch)
+        .query(`
+          INSERT INTO HoaDon (MaHD, GhiChu, NgayTao, ChiNhanh)
+          VALUES (@MaHD, @GhiChu, GETDATE(), @ChiNhanh);
+        `);
+    }
+
+    await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), maHD)
+      .input("MaSP", sql.VarChar(50), payload.productCode)
+      .input("SoLuong", sql.Int, payload.quantity)
+      .input("DonGia", sql.Decimal(10, 2), unitPrice).query(`
+        IF OBJECT_ID('dbo.ChiTietHoaDon', 'U') IS NOT NULL
+        BEGIN
+          INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
+          VALUES (@MaHD, @MaSP, @SoLuong, @DonGia);
+        END
+      `);
+
+    await deductStock(
+      transaction,
+      payload.branch,
+      payload.productCode,
+      payload.quantity,
+    );
+
+    await transaction.commit();
+    return {
+      MaHD: maHD,
+      MaSP: payload.productCode,
+      SoLuong: payload.quantity,
+      TongTien: totalAmount,
+      GhiChu: payload.note,
+      ChiNhanh: payload.branch,
+      MaNV: employeeId,
+      TenHang: productName,
+      DonGia: Number(unitPrice || 0),
+      NgayTao: new Date().toISOString(),
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
 }
 
 async function updateInvoice(branch, invoiceId, payload) {
@@ -125,29 +357,171 @@ async function updateInvoice(branch, invoiceId, payload) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
-    .request()
-    .input("MaHD", sql.VarChar(50), invoiceId)
-    .input("MaSP", sql.VarChar(50), payload.productCode || null)
-    .input("SoLuong", sql.Int, payload.quantity > 0 ? payload.quantity : null)
-    .input(
-      "TongTien",
-      sql.Decimal(18, 2),
-      payload.totalAmount > 0 ? payload.totalAmount : null,
-    )
-    .input("GhiChu", sql.NVarChar(255), payload.note ?? null).query(`
-      UPDATE HoaDon
-      SET MaSP = COALESCE(@MaSP, MaSP),
-          SoLuong = COALESCE(@SoLuong, SoLuong),
-          TongTien = COALESCE(@TongTien, TongTien),
-          GhiChu = COALESCE(@GhiChu, GhiChu)
-      OUTPUT inserted.*
-      WHERE MaHD = @MaHD;
-    `);
-  if (!result.recordset.length) {
-    throw new Error(`Invoice ${invoiceId} not found in ${branch}`);
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  try {
+    const hasMaNV = await hasHoaDonEmployeeColumnWithTransaction(transaction);
+    const currentRs = await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), invoiceId)
+      .query(
+        hasMaNV
+          ? `
+            SELECT
+              hd.MaHD,
+              hd.GhiChu,
+              hd.NgayTao,
+              hd.ChiNhanh,
+              hd.MaNV,
+              ctd.MaSP,
+              ctd.SoLuong,
+              ctd.DonGia,
+              hh.TenHang
+            FROM HoaDon hd
+            INNER JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
+            LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+            WHERE hd.MaHD = @MaHD;
+          `
+          : `
+            SELECT
+              hd.MaHD,
+              hd.GhiChu,
+              hd.NgayTao,
+              hd.ChiNhanh,
+              NULL AS MaNV,
+              ctd.MaSP,
+              ctd.SoLuong,
+              ctd.DonGia,
+              hh.TenHang
+            FROM HoaDon hd
+            INNER JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
+            LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+            WHERE hd.MaHD = @MaHD;
+          `,
+      );
+
+    if (!currentRs.recordset.length) {
+      throw new Error(`Invoice ${invoiceId} not found in ${branch}`);
+    }
+
+    const current = currentRs.recordset[0];
+    const nextMaSP = payload.productCode || current.MaSP;
+    const nextSoLuong = payload.quantity > 0 ? payload.quantity : Number(current.SoLuong || 0);
+    const nextProductRs = await new sql.Request(transaction)
+      .input("MaSP", sql.VarChar(50), nextMaSP)
+      .query(`
+        SELECT TOP 1 TenHang, Gia
+        FROM dbo.HangHoa
+        WHERE MaSP = @MaSP;
+      `);
+    const nextProduct = nextProductRs.recordset[0] || null;
+    const nextDonGia =
+      payload.unitPrice > 0
+        ? payload.unitPrice
+        : payload.productCode && payload.productCode !== current.MaSP
+          ? Number(nextProduct?.Gia || 0)
+          : Number(current.DonGia || nextProduct?.Gia || 0);
+    if (nextDonGia <= 0) {
+      throw new Error(
+        `Cannot resolve unit price for product ${nextMaSP}. Please input unitPrice or define Gia in HangHoa first.`,
+      );
+    }
+    const nextTenHang =
+      payload.productName || nextProduct?.TenHang || current.TenHang || nextMaSP;
+    const nextGhiChu = payload.note !== null ? payload.note : current.GhiChu;
+    const nextMaNV = payload.employeeId
+      ? payload.employeeId
+      : current.MaNV || null;
+
+    if (hasMaNV) {
+      await ensureEmployeeExists(transaction, branch, nextMaNV);
+    }
+
+    if (hasMaNV) {
+      await new sql.Request(transaction)
+        .input("MaHD", sql.VarChar(50), invoiceId)
+        .input("GhiChu", sql.NVarChar(255), nextGhiChu)
+        .input("MaNV", sql.VarChar(50), nextMaNV)
+        .query(`
+          UPDATE HoaDon
+          SET GhiChu = @GhiChu,
+              MaNV = @MaNV
+          WHERE MaHD = @MaHD;
+        `);
+    } else {
+      await new sql.Request(transaction)
+        .input("MaHD", sql.VarChar(50), invoiceId)
+        .input("GhiChu", sql.NVarChar(255), nextGhiChu)
+        .query(`
+          UPDATE HoaDon
+          SET GhiChu = @GhiChu
+          WHERE MaHD = @MaHD;
+        `);
+    }
+
+    await new sql.Request(transaction)
+      .input("MaSP", sql.VarChar(50), nextMaSP)
+      .input("TenHang", sql.NVarChar(100), nextTenHang)
+      .input("Gia", sql.Decimal(10, 2), nextDonGia).query(`
+        IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+        BEGIN
+          IF EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
+          BEGIN
+            UPDATE dbo.HangHoa
+            SET TenHang = @TenHang
+            WHERE MaSP = @MaSP;
+          END
+          ELSE
+          BEGIN
+            INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia)
+            VALUES (@MaSP, @TenHang, @Gia);
+          END
+        END
+      `);
+
+    await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), invoiceId)
+      .input("MaSP", sql.VarChar(50), nextMaSP)
+      .input("SoLuong", sql.Int, nextSoLuong)
+      .input("DonGia", sql.Decimal(10, 2), nextDonGia).query(`
+        IF OBJECT_ID('dbo.ChiTietHoaDon', 'U') IS NOT NULL
+        BEGIN
+          DELETE FROM dbo.ChiTietHoaDon WHERE MaHD = @MaHD;
+          INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
+          VALUES (@MaHD, @MaSP, @SoLuong, @DonGia);
+        END
+      `);
+
+    const currentQty = Number(current.SoLuong || 0);
+    if (current.MaSP === nextMaSP) {
+      const delta = nextSoLuong - currentQty;
+      if (delta > 0) {
+        await deductStock(transaction, branch, nextMaSP, delta);
+      } else if (delta < 0) {
+        await addStock(transaction, branch, nextMaSP, Math.abs(delta));
+      }
+    } else {
+      await addStock(transaction, branch, current.MaSP, currentQty);
+      await deductStock(transaction, branch, nextMaSP, nextSoLuong);
+    }
+
+    await transaction.commit();
+    return {
+      MaHD: invoiceId,
+      MaSP: nextMaSP,
+      SoLuong: nextSoLuong,
+      TongTien: Number(nextSoLuong || 0) * Number(nextDonGia || 0),
+      GhiChu: nextGhiChu,
+      ChiNhanh: branch,
+      MaNV: nextMaNV,
+      TenHang: nextTenHang,
+      DonGia: Number(nextDonGia || 0),
+      NgayTao: current.NgayTao,
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
   }
-  return result.recordset[0];
 }
 
 async function deleteInvoice(branch, invoiceId) {
@@ -156,14 +530,54 @@ async function deleteInvoice(branch, invoiceId) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
-    .request()
-    .input("MaHD", sql.VarChar(50), invoiceId)
-    .query("DELETE FROM HoaDon OUTPUT deleted.* WHERE MaHD = @MaHD;");
-  if (!result.recordset.length) {
-    throw new Error(`Invoice ${invoiceId} not found in ${branch}`);
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  try {
+    const beforeDelete = await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), invoiceId)
+      .query("SELECT TOP 1 * FROM HoaDon WHERE MaHD = @MaHD;");
+
+    if (!beforeDelete.recordset.length) {
+      throw new Error(`Invoice ${invoiceId} not found in ${branch}`);
+    }
+
+    const detailsBeforeDelete = await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), invoiceId)
+      .query(`
+        IF OBJECT_ID('dbo.ChiTietHoaDon', 'U') IS NOT NULL
+        BEGIN
+          SELECT MaSP, SoLuong FROM dbo.ChiTietHoaDon WHERE MaHD = @MaHD;
+        END
+      `);
+
+    await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), invoiceId).query(`
+        IF OBJECT_ID('dbo.ChiTietHoaDon', 'U') IS NOT NULL
+        BEGIN
+          DELETE FROM dbo.ChiTietHoaDon WHERE MaHD = @MaHD;
+        END
+      `);
+
+    await new sql.Request(transaction)
+      .input("MaHD", sql.VarChar(50), invoiceId)
+      .query("DELETE FROM HoaDon WHERE MaHD = @MaHD;");
+
+    for (const detail of detailsBeforeDelete.recordset || []) {
+      await addStock(
+        transaction,
+        branch,
+        String(detail.MaSP || "").trim(),
+        Number(detail.SoLuong || 0),
+      );
+    }
+
+    await transaction.commit();
+    return beforeDelete.recordset[0];
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
   }
-  return result.recordset[0];
 }
 
 async function listAllEmployeesFromCentral() {
@@ -192,13 +606,16 @@ async function getNationalRevenue() {
   const linked = linkedServerNames();
   const pool = await getPool("CENTRAL");
   const result = await pool.request().query(`
-    SELECT BranchCode, SUM(TongTien) AS Revenue
+    SELECT BranchCode, SUM(LineAmount) AS Revenue
     FROM (
-      SELECT 'HUE' AS BranchCode, TongTien FROM [${linked.HUE}].[Store_H].dbo.HoaDon
+      SELECT 'HUE' AS BranchCode, CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS LineAmount
+      FROM [${linked.HUE}].[Store_H].dbo.ChiTietHoaDon ctd
       UNION ALL
-      SELECT 'SAIGON' AS BranchCode, TongTien FROM [${linked.SAIGON}].[Store_SG].dbo.HoaDon
+      SELECT 'SAIGON' AS BranchCode, CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS LineAmount
+      FROM [${linked.SAIGON}].[Store_SG].dbo.ChiTietHoaDon ctd
       UNION ALL
-      SELECT 'HANOI' AS BranchCode, TongTien FROM [${linked.HANOI}].[Store_HN].dbo.HoaDon
+      SELECT 'HANOI' AS BranchCode, CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS LineAmount
+      FROM [${linked.HANOI}].[Store_HN].dbo.ChiTietHoaDon ctd
     ) x
     GROUP BY BranchCode;
   `);
@@ -229,7 +646,10 @@ async function listInventory(branch, productCode) {
   if (!productCode) {
     const rows = await pool
       .request()
-      .query("SELECT MaSP, SoLuongTon FROM TonKho ORDER BY MaSP;");
+      .input("ChiNhanh", sql.VarChar(10), branch)
+      .query(
+        "SELECT MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh ORDER BY MaSP;",
+      );
     return rows.recordset.map((row) => ({
       branch,
       productCode: row.MaSP,
@@ -239,8 +659,11 @@ async function listInventory(branch, productCode) {
 
   const result = await pool
     .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
     .input("MaSP", sql.VarChar(50), productCode)
-    .query("SELECT MaSP, SoLuongTon FROM TonKho WHERE MaSP = @MaSP;");
+    .query(
+      "SELECT MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;",
+    );
 
   const row = result.recordset[0] || { MaSP: productCode, SoLuongTon: 0 };
   return {
@@ -250,24 +673,79 @@ async function listInventory(branch, productCode) {
   };
 }
 
+async function getProductByCode(branch, productCode) {
+  if (isMockMode()) {
+    return mock.getProductByCode(branch, productCode);
+  }
+
+  const code = String(productCode || "").trim();
+  if (!code) {
+    throw new Error("productCode is required");
+  }
+
+  const pool = await getPool(branch);
+  const rs = await pool
+    .request()
+    .input("MaSP", sql.VarChar(50), code)
+    .query(`
+      SELECT TOP 1 MaSP, TenHang, Gia
+      FROM HangHoa
+      WHERE MaSP = @MaSP;
+    `);
+
+  const row = rs.recordset[0] || null;
+  if (!row) {
+    return null;
+  }
+
+  return {
+    branch,
+    productCode: row.MaSP,
+    productName: row.TenHang,
+    unitPrice: Number(row.Gia || 0),
+  };
+}
+
 async function createInventoryItem(branch, payload) {
   if (isMockMode()) {
     return mock.createInventoryItem(branch, payload);
   }
 
   const pool = await getPool(branch);
-  const result = await pool
+  const productName = payload.productName || payload.productCode;
+  const unitPrice = Number.isFinite(Number(payload.unitPrice))
+    ? Number(payload.unitPrice)
+    : 0;
+
+  await pool
     .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
     .input("MaSP", sql.VarChar(50), payload.productCode)
+    .input("TenHang", sql.NVarChar(100), productName)
+    .input("Gia", sql.Decimal(10, 2), unitPrice)
     .input("SoLuongTon", sql.Int, payload.quantity).query(`
-      INSERT INTO TonKho (MaSP, SoLuongTon)
-      OUTPUT inserted.*
-      VALUES (@MaSP, @SoLuongTon);
+      IF NOT EXISTS (SELECT 1 FROM HangHoa WHERE MaSP = @MaSP)
+      BEGIN
+        INSERT INTO HangHoa (MaSP, TenHang, Gia)
+        VALUES (@MaSP, @TenHang, @Gia);
+      END
+
+      INSERT INTO TonKho (MaSP, SoLuongTon, ChiNhanh)
+      VALUES (@MaSP, @SoLuongTon, @ChiNhanh);
     `);
+
+  const inserted = await pool
+    .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .input("MaSP", sql.VarChar(50), payload.productCode)
+    .query(
+      "SELECT TOP 1 MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;",
+    );
+
   return {
     branch,
-    productCode: result.recordset[0].MaSP,
-    quantity: Number(result.recordset[0].SoLuongTon || 0),
+    productCode: inserted.recordset[0].MaSP,
+    quantity: Number(inserted.recordset[0].SoLuongTon || 0),
   };
 }
 
@@ -277,22 +755,31 @@ async function updateInventoryItem(branch, productCode, quantity) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
+  await pool
     .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
     .input("MaSP", sql.VarChar(50), productCode)
     .input("SoLuongTon", sql.Int, quantity).query(`
       UPDATE TonKho
       SET SoLuongTon = @SoLuongTon
-      OUTPUT inserted.*
-      WHERE MaSP = @MaSP;
+      WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;
     `);
-  if (!result.recordset.length) {
+
+  const updated = await pool
+    .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .input("MaSP", sql.VarChar(50), productCode)
+    .query(
+      "SELECT TOP 1 MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;",
+    );
+
+  if (!updated.recordset.length) {
     throw new Error(`Product ${productCode} not found in ${branch}`);
   }
   return {
     branch,
-    productCode: result.recordset[0].MaSP,
-    quantity: Number(result.recordset[0].SoLuongTon || 0),
+    productCode: updated.recordset[0].MaSP,
+    quantity: Number(updated.recordset[0].SoLuongTon || 0),
   };
 }
 
@@ -302,17 +789,28 @@ async function deleteInventoryItem(branch, productCode) {
   }
 
   const pool = await getPool(branch);
-  const result = await pool
+  const beforeDelete = await pool
     .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
     .input("MaSP", sql.VarChar(50), productCode)
-    .query("DELETE FROM TonKho OUTPUT deleted.* WHERE MaSP = @MaSP;");
-  if (!result.recordset.length) {
+    .query(
+      "SELECT TOP 1 MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;",
+    );
+
+  if (!beforeDelete.recordset.length) {
     throw new Error(`Product ${productCode} not found in ${branch}`);
   }
+
+  await pool
+    .request()
+    .input("ChiNhanh", sql.VarChar(10), branch)
+    .input("MaSP", sql.VarChar(50), productCode)
+    .query("DELETE FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;");
+
   return {
     branch,
-    productCode: result.recordset[0].MaSP,
-    quantity: Number(result.recordset[0].SoLuongTon || 0),
+    productCode: beforeDelete.recordset[0].MaSP,
+    quantity: Number(beforeDelete.recordset[0].SoLuongTon || 0),
   };
 }
 
@@ -327,7 +825,9 @@ async function getBranchDashboard(branch) {
     pool.request().query("SELECT COUNT(1) AS count FROM HoaDon;"),
     pool
       .request()
-      .query("SELECT ISNULL(SUM(TongTien), 0) AS revenue FROM HoaDon;"),
+      .query(
+        "SELECT ISNULL(SUM(CAST(SoLuong * DonGia AS DECIMAL(18,2))), 0) AS revenue FROM ChiTietHoaDon;",
+      ),
     pool
       .request()
       .query(
@@ -357,6 +857,8 @@ async function transferStockDistributed(payload) {
   const linked = linkedServerNames();
   const fromServer = linked[payload.fromBranch];
   const toServer = linked[payload.toBranch];
+  const fromDb = dbNameByBranch(payload.fromBranch);
+  const toDb = dbNameByBranch(payload.toBranch);
 
   if (!fromServer || !toServer) {
     throw new Error("Cannot resolve linked server names for transfer");
@@ -367,16 +869,29 @@ async function transferStockDistributed(payload) {
   const beforeFrom = await pool
     .request()
     .input("MaSP", sql.VarChar(50), payload.productCode)
+    .input("FromBranch", sql.VarChar(10), payload.fromBranch)
     .query(
-      `SELECT SoLuongTon FROM [${fromServer}].[${payload.fromBranch === "HUE" ? "Store_H" : payload.fromBranch === "SAIGON" ? "Store_SG" : "Store_HN"}].dbo.TonKho WHERE MaSP = @MaSP;`,
+      `SELECT TOP 1 SoLuongTon FROM [${fromServer}].[${fromDb}].dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = @FromBranch;`,
     );
 
   const beforeTo = await pool
     .request()
     .input("MaSP", sql.VarChar(50), payload.productCode)
+    .input("ToBranch", sql.VarChar(10), payload.toBranch)
     .query(
-      `SELECT SoLuongTon FROM [${toServer}].[${payload.toBranch === "HUE" ? "Store_H" : payload.toBranch === "SAIGON" ? "Store_SG" : "Store_HN"}].dbo.TonKho WHERE MaSP = @MaSP;`,
+      `SELECT TOP 1 SoLuongTon FROM [${toServer}].[${toDb}].dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = @ToBranch;`,
     );
+
+  if (!beforeFrom.recordset.length) {
+    throw new Error(
+      `Product ${payload.productCode} not found in source inventory ${payload.fromBranch}`,
+    );
+  }
+  if (!beforeTo.recordset.length) {
+    throw new Error(
+      `Product ${payload.productCode} not found in destination inventory ${payload.toBranch}`,
+    );
+  }
 
   const fromQty = Number((beforeFrom.recordset[0] || {}).SoLuongTon || 0);
   if (fromQty < payload.quantity) {
@@ -385,33 +900,66 @@ async function transferStockDistributed(payload) {
     );
   }
 
-  await pool
-    .request()
-    .input("MaSP", sql.VarChar(50), payload.productCode)
-    .input("SoLuong", sql.Int, payload.quantity).query(`
-      BEGIN DISTRIBUTED TRANSACTION;
-        UPDATE [${fromServer}].[${payload.fromBranch === "HUE" ? "Store_H" : payload.fromBranch === "SAIGON" ? "Store_SG" : "Store_HN"}].dbo.TonKho
-        SET SoLuongTon = SoLuongTon - @SoLuong
-        WHERE MaSP = @MaSP;
+  try {
+    await pool
+      .request()
+      .input("MaSP", sql.VarChar(50), payload.productCode)
+      .input("SoLuong", sql.Int, payload.quantity)
+      .input("FromBranch", sql.VarChar(10), payload.fromBranch)
+      .input("ToBranch", sql.VarChar(10), payload.toBranch).query(`
+        SET XACT_ABORT ON;
+        BEGIN TRY
+          BEGIN DISTRIBUTED TRANSACTION;
+            UPDATE [${fromServer}].[${fromDb}].dbo.TonKho
+            SET SoLuongTon = SoLuongTon - @SoLuong
+            WHERE MaSP = @MaSP AND ChiNhanh = @FromBranch;
 
-        UPDATE [${toServer}].[${payload.toBranch === "HUE" ? "Store_H" : payload.toBranch === "SAIGON" ? "Store_SG" : "Store_HN"}].dbo.TonKho
-        SET SoLuongTon = SoLuongTon + @SoLuong
-        WHERE MaSP = @MaSP;
-      COMMIT TRANSACTION;
-    `);
+            IF @@ROWCOUNT = 0
+              THROW 50001, 'Source row not updated on linked server', 1;
+
+            UPDATE [${toServer}].[${toDb}].dbo.TonKho
+            SET SoLuongTon = SoLuongTon + @SoLuong
+            WHERE MaSP = @MaSP AND ChiNhanh = @ToBranch;
+
+            IF @@ROWCOUNT = 0
+              THROW 50002, 'Destination row not updated on linked server', 1;
+
+          COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+          IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
+          THROW;
+        END CATCH;
+      `);
+  } catch (error) {
+    const message = String(error.message || "");
+    const linkedHints =
+      message.toLowerCase().includes("distributed transaction") ||
+      message.toLowerCase().includes("msdtc") ||
+      message.toLowerCase().includes("linked server");
+
+    if (linkedHints) {
+      throw new Error(
+        `Transfer failed due to linked-server/distributed-transaction setup. Check MSDTC (Network DTC Access + Inbound/Outbound) on all SQL hosts and enable RPC OUT for linked servers (${fromServer}, ${toServer}). Original error: ${message}`,
+      );
+    }
+    throw error;
+  }
 
   const afterFrom = await pool
     .request()
     .input("MaSP", sql.VarChar(50), payload.productCode)
+    .input("FromBranch", sql.VarChar(10), payload.fromBranch)
     .query(
-      `SELECT SoLuongTon FROM [${fromServer}].[${payload.fromBranch === "HUE" ? "Store_H" : payload.fromBranch === "SAIGON" ? "Store_SG" : "Store_HN"}].dbo.TonKho WHERE MaSP = @MaSP;`,
+      `SELECT TOP 1 SoLuongTon FROM [${fromServer}].[${fromDb}].dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = @FromBranch;`,
     );
 
   const afterTo = await pool
     .request()
     .input("MaSP", sql.VarChar(50), payload.productCode)
+    .input("ToBranch", sql.VarChar(10), payload.toBranch)
     .query(
-      `SELECT SoLuongTon FROM [${toServer}].[${payload.toBranch === "HUE" ? "Store_H" : payload.toBranch === "SAIGON" ? "Store_SG" : "Store_HN"}].dbo.TonKho WHERE MaSP = @MaSP;`,
+      `SELECT TOP 1 SoLuongTon FROM [${toServer}].[${toDb}].dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = @ToBranch;`,
     );
 
   return {
@@ -447,6 +995,7 @@ module.exports = {
   getNationalRevenue,
   transferStockDistributed,
   listInventory,
+  getProductByCode,
   createInventoryItem,
   updateInventoryItem,
   deleteInventoryItem,

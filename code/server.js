@@ -21,6 +21,7 @@ const {
   getNationalRevenue,
   transferStockDistributed,
   listInventory,
+  getProductByCode,
   createInventoryItem,
   updateInventoryItem,
   deleteInventoryItem,
@@ -172,19 +173,21 @@ app.post("/api/invoices", async (req, res) => {
     const payload = {
       branch,
       productCode: String(req.body.productCode || "").trim(),
+      employeeId: req.body.employeeId
+        ? String(req.body.employeeId).trim()
+        : "",
       quantity: Number(req.body.quantity || 0),
       totalAmount: Number(req.body.totalAmount || 0),
+      productName: req.body.productName
+        ? String(req.body.productName).trim()
+        : "",
+      unitPrice: Number(req.body.unitPrice || 0),
       note: String(req.body.note || "").trim(),
     };
 
-    if (
-      !payload.productCode ||
-      payload.quantity <= 0 ||
-      payload.totalAmount <= 0
-    ) {
+    if (!payload.productCode || payload.quantity <= 0) {
       return res.status(400).json({
-        message:
-          "productCode, quantity and totalAmount are required and must be positive",
+        message: "productCode and quantity are required and must be positive",
       });
     }
 
@@ -217,8 +220,15 @@ app.put("/api/invoices/:invoiceId", async (req, res) => {
       productCode: req.body.productCode
         ? String(req.body.productCode).trim()
         : "",
+      employeeId: req.body.employeeId
+        ? String(req.body.employeeId).trim()
+        : "",
       quantity: Number(req.body.quantity || 0),
       totalAmount: Number(req.body.totalAmount || 0),
+      productName: req.body.productName
+        ? String(req.body.productName).trim()
+        : "",
+      unitPrice: Number(req.body.unitPrice || 0),
       note: req.body.note !== undefined ? String(req.body.note).trim() : null,
     };
 
@@ -314,6 +324,30 @@ app.get("/api/inventory", async (req, res) => {
     }
     const result = await listInventory(branch, productCode);
     return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/api/products/:productCode", async (req, res) => {
+  try {
+    const branch = normalizeBranch(req.query.branch);
+    const productCode = String(req.params.productCode || "").trim();
+    if (!branch || isCentralBranch(branch)) {
+      return res.status(400).json({
+        message: "branch is required and must be HUE, SAIGON, or HANOI",
+      });
+    }
+    if (!productCode) {
+      return res.status(400).json({ message: "productCode is required" });
+    }
+
+    const product = await getProductByCode(branch, productCode);
+    if (!product) {
+      return res.status(404).json({ message: `Product ${productCode} not found in ${branch}` });
+    }
+
+    return res.json(product);
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
