@@ -22,7 +22,7 @@ npm run dev
 ## 3. Tao schema va seed du lieu
 
 1. Mo file code/SQLQuery3.sql bang SSMS
-2. Chay  script tạo các db trên các server khác nhau
+2. Chay  script tạo các db trên các server khác nhau, tạo db Central trước, sau đó tạo db cho 3 server còn lại
 3. Script se tao/lam moi bang theo mo hinh:
    - ChiNhanh
    - NhanVien
@@ -38,10 +38,10 @@ Ghi chu ngan:
 ## 4. Tao file env mới theo may ban
 
 1. Copy file code/.env.example thanh code/.env
-2. Sua code/.env theo may ban:
-   - Neu SQL cung may voi app: DB_HOST=localhost
-   
+2. Chi dung cho may thuong : de tat ca *_DB_HOST=localhost
 3. Dat MOCK_MODE=false de chay SQL that
+4. Doi tat ca *_DB_PASSWORD theo mat khau SQL cua may ban
+- Nho mo SQL Server Configuration Manager -> SQL Server Network Configuration -> Protocols -> TCP/IP, va dat dung TCP Port (1401/1402/1403/1404 theo cau hinh).
 
 Mau toi thieu:
 
@@ -80,6 +80,13 @@ LINKED_HANOI=HN_SERVER
 
 ## 5. Linked Server (co the lam bang GUI như báo cáo tham khảo )
 
+
+file sqlquery1.sql dùng tạo linked server trong ssms
+
+từ central đến các chi nhánh
+
+(chủ yếu cho code chạy tính năng gửi số lượng tồn kho từ chi nhánh này sang chi nhánh khác)
+
 Ban can linked server neu dung cac chuc nang toan cuc tai Central:
 - Danh sach nhan vien toan quoc
 - Bao cao doanh thu toan quoc
@@ -93,3 +100,7 @@ Ban can linked server neu dung cac chuc nang toan cuc tai Central:
 - code/.env la file rieng tung may, khong dung chung gia tri cho tat ca
 
 - .env.example la mau chung cho team
+
+- Nho mo SQL Server Configuration Manager -> SQL Server Network Configuration -> Protocols -> TCP/IP, va dat dung TCP Port (1401/1402/1403/1404 theo cau hinh).
+
+- Mat khau `sa` trong SQL Server phai trung voi tat ca bien *_DB_PASSWORD trong code/.env.
