@@ -264,7 +264,7 @@ async function createInvoice(payload) {
       );
     }
     const productName =
-      payload.productName || product?.TenHang || payload.productCode;
+      product?.TenHang || payload.productName || payload.productCode;
     const totalAmount = Number(payload.quantity || 0) * Number(unitPrice || 0);
 
     // If HoaDon.MaNV exists, enforce that submitted employee belongs to that branch.
@@ -278,13 +278,7 @@ async function createInvoice(payload) {
       .input("Gia", sql.Decimal(10, 2), unitPrice).query(`
         IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
         BEGIN
-          IF EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
-          BEGIN
-            UPDATE dbo.HangHoa
-            SET TenHang = @TenHang
-            WHERE MaSP = @MaSP;
-          END
-          ELSE
+          IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
           BEGIN
             INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia)
             VALUES (@MaSP, @TenHang, @Gia);

@@ -109,6 +109,35 @@ function renderChart(chartId, config) {
   chartRegistry[chartId] = new window.Chart(canvas.getContext("2d"), config);
 }
 
+function formatTableCellValue(columnName, value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const normalized = String(columnName || "").toLowerCase();
+  const shouldFormatDate = normalized === "ngaytao";
+  if (!shouldFormatDate) {
+    return value;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const pad2 = (num) => String(num).padStart(2, "0");
+
+  // SQL DATETIME/DATETIME2 has no timezone. Avoid applying timezone conversion twice.
+  const day = pad2(date.getUTCDate());
+  const month = pad2(date.getUTCMonth() + 1);
+  const year = date.getUTCFullYear();
+  const hour = pad2(date.getUTCHours());
+  const minute = pad2(date.getUTCMinutes());
+  const second = pad2(date.getUTCSeconds());
+
+  return `${day}/${month}/${year} ${hour}:${minute}:${second}`;
+}
+
 function renderTable(wrapper, rows, options = {}) {
   if (!rows || rows.length === 0) {
     wrapper.innerHTML = `<p class="subtitle">${options.emptyMessage || "Không co du lieu."}</p>`;
@@ -122,7 +151,7 @@ function renderTable(wrapper, rows, options = {}) {
   const tbody = `<tbody>${rows
     .map(
       (row, index) =>
-        `<tr data-table-id="${tableId}" data-row-index="${index}">${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`,
+        `<tr data-table-id="${tableId}" data-row-index="${index}">${headers.map((h) => `<td>${formatTableCellValue(h, row[h])}</td>`).join("")}</tr>`,
     )
     .join("")}</tbody>`;
 
@@ -205,16 +234,16 @@ function attachInvoiceProductAutoFill(form, resolveBranch, resultBox) {
         `/api/products/${encodeURIComponent(productCode)}?branch=${branch}`,
       );
       form.elements.unitPrice.value = String(product.unitPrice ?? "");
-      if (
-        form.elements.productName &&
-        !String(form.elements.productName.value || "").trim()
-      ) {
+      if (form.elements.productName) {
         form.elements.productName.value = String(product.productName || "");
       }
       form.elements.unitPrice.dispatchEvent(new Event("input"));
     } catch (error) {
       if (String(error.message || "").toLowerCase().includes("not found")) {
         form.elements.unitPrice.value = "";
+        if (form.elements.productName) {
+          form.elements.productName.value = "";
+        }
         form.elements.unitPrice.dispatchEvent(new Event("input"));
       }
       if (resultBox) {
