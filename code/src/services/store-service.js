@@ -195,41 +195,59 @@ async function listInvoicesByBranch(branch) {
     ? `
       SELECT
         hd.MaHD,
-        ctd.MaSP,
-        ctd.SoLuong,
-        CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS TongTien,
+        SUM(CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2))) AS TongTien,
+        COUNT(ctd.MaSP) AS SoMon,
         hd.GhiChu,
         hd.NgayTao,
         hd.ChiNhanh,
         hd.MaNV,
-        nv.HoTen AS HoTenNhanVien,
-        hh.TenHang,
-        ctd.DonGia
+        MAX(nv.HoTen) AS HoTenNhanVien
       FROM HoaDon hd
-      INNER JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
-      LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+      LEFT JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
       LEFT JOIN NhanVien nv ON nv.MaNV = hd.MaNV
+      GROUP BY hd.MaHD, hd.GhiChu, hd.NgayTao, hd.ChiNhanh, hd.MaNV
       ORDER BY hd.NgayTao DESC;
     `
     : `
       SELECT
         hd.MaHD,
-        ctd.MaSP,
-        ctd.SoLuong,
-        CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS TongTien,
+        SUM(CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2))) AS TongTien,
+        COUNT(ctd.MaSP) AS SoMon,
         hd.GhiChu,
         hd.NgayTao,
         hd.ChiNhanh,
         NULL AS MaNV,
-        NULL AS HoTenNhanVien,
-        hh.TenHang,
-        ctd.DonGia
+        NULL AS HoTenNhanVien
       FROM HoaDon hd
-      INNER JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
-      LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+      LEFT JOIN ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
+      GROUP BY hd.MaHD, hd.GhiChu, hd.NgayTao, hd.ChiNhanh
       ORDER BY hd.NgayTao DESC;
     `;
   const result = await pool.request().query(query);
+  return result.recordset;
+}
+
+async function getInvoiceDetails(branch, invoiceId) {
+  if (isMockMode()) {
+    return mock.getInvoiceDetailsLocal(branch, invoiceId);
+  }
+
+  const pool = await getPool(branch);
+  const result = await pool
+    .request()
+    .input("MaHD", sql.VarChar(50), invoiceId)
+    .query(`
+      SELECT 
+        ctd.MaHD,
+        ctd.MaSP,
+        hh.TenHang,
+        ctd.SoLuong,
+        ctd.DonGia,
+        CAST(ctd.SoLuong * ctd.DonGia AS DECIMAL(18,2)) AS ThanhTien
+      FROM ChiTietHoaDon ctd
+      LEFT JOIN HangHoa hh ON hh.MaSP = ctd.MaSP
+      WHERE ctd.MaHD = @MaHD
+    `);
   return result.recordset;
 }
 
@@ -246,45 +264,102 @@ async function createInvoice(payload) {
     const hasMaNV = await hasHoaDonEmployeeColumnWithTransaction(transaction);
     const employeeId = String(payload.employeeId || "").trim() || null;
     const maHD = `HD_${Date.now()}`;
-    const productRs = await new sql.Request(transaction)
-      .input("MaSP", sql.VarChar(50), payload.productCode)
-      .query(`
-        SELECT TOP 1 TenHang, Gia
-        FROM dbo.HangHoa
-        WHERE MaSP = @MaSP;
-      `);
-    const product = productRs.recordset[0] || null;
-    const unitPrice =
-      payload.unitPrice > 0
-        ? payload.unitPrice
-        : Number(product?.Gia || 0);
-    if (unitPrice <= 0) {
-      throw new Error(
-        `Cannot resolve unit price for product ${payload.productCode}. Please input unitPrice or define Gia in HangHoa first.`,
-      );
+    const rawItems = Array.isArray(payload.items) && payload.items.length
+      ? payload.items
+      : [
+          {
+            productCode: payload.productCode,
+            productName: payload.productName,
+            unitPrice: payload.unitPrice,
+            quantity: payload.quantity,
+            totalAmount: payload.totalAmount,
+          },
+        ];
+
+    const normalizedItems = [];
+    for (const rawItem of rawItems) {
+      const productCode = String(rawItem?.productCode || "").trim();
+      const quantity = Number(rawItem?.quantity || 0);
+      if (!productCode || quantity <= 0) {
+        throw new Error("Each invoice item must include productCode and quantity > 0");
+      }
+
+      const productRs = await new sql.Request(transaction)
+        .input("MaSP", sql.VarChar(50), productCode)
+        .query(`
+          SELECT TOP 1 TenHang, Gia
+          FROM dbo.HangHoa
+          WHERE MaSP = @MaSP;
+        `);
+      const product = productRs.recordset[0] || null;
+      const unitPrice =
+        Number(rawItem?.unitPrice || 0) > 0
+          ? Number(rawItem.unitPrice)
+          : Number(product?.Gia || 0);
+
+      if (unitPrice <= 0) {
+        throw new Error(
+          `Cannot resolve unit price for product ${productCode}. Please input unitPrice or define Gia in HangHoa first.`,
+        );
+      }
+
+      const productName =
+        product?.TenHang || String(rawItem?.productName || "").trim() || productCode;
+
+      await new sql.Request(transaction)
+        .input("MaSP", sql.VarChar(50), productCode)
+        .input("TenHang", sql.NVarChar(100), productName)
+        .input("Gia", sql.Decimal(10, 2), unitPrice).query(`
+          IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
+            BEGIN
+              INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia)
+              VALUES (@MaSP, @TenHang, @Gia);
+            END
+          END
+        `);
+
+      normalizedItems.push({
+        productCode,
+        productName,
+        quantity,
+        unitPrice,
+        totalAmount: Number(quantity || 0) * Number(unitPrice || 0),
+      });
     }
-    const productName =
-      product?.TenHang || payload.productName || payload.productCode;
-    const totalAmount = Number(payload.quantity || 0) * Number(unitPrice || 0);
+
+    const mergedItemsByProduct = new Map();
+    for (const item of normalizedItems) {
+      const key = item.productCode;
+      const existing = mergedItemsByProduct.get(key);
+      if (!existing) {
+        mergedItemsByProduct.set(key, { ...item });
+        continue;
+      }
+
+      if (Number(existing.unitPrice || 0) !== Number(item.unitPrice || 0)) {
+        throw new Error(
+          `Duplicate product ${key} has different unit prices in the same invoice`,
+        );
+      }
+
+      existing.quantity += Number(item.quantity || 0);
+      existing.totalAmount =
+        Number(existing.quantity || 0) * Number(existing.unitPrice || 0);
+    }
+
+    const mergedItems = Array.from(mergedItemsByProduct.values());
+
+    const totalAmount = mergedItems.reduce(
+      (sum, item) => sum + Number(item.totalAmount || 0),
+      0,
+    );
 
     // If HoaDon.MaNV exists, enforce that submitted employee belongs to that branch.
     if (hasMaNV) {
       await ensureEmployeeExists(transaction, payload.branch, employeeId);
     }
-
-    await new sql.Request(transaction)
-      .input("MaSP", sql.VarChar(50), payload.productCode)
-      .input("TenHang", sql.NVarChar(100), productName)
-      .input("Gia", sql.Decimal(10, 2), unitPrice).query(`
-        IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
-          BEGIN
-            INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia)
-            VALUES (@MaSP, @TenHang, @Gia);
-          END
-        END
-      `);
 
     if (hasMaNV) {
       await new sql.Request(transaction)
@@ -307,36 +382,45 @@ async function createInvoice(payload) {
         `);
     }
 
-    await new sql.Request(transaction)
-      .input("MaHD", sql.VarChar(50), maHD)
-      .input("MaSP", sql.VarChar(50), payload.productCode)
-      .input("SoLuong", sql.Int, payload.quantity)
-      .input("DonGia", sql.Decimal(10, 2), unitPrice).query(`
-        IF OBJECT_ID('dbo.ChiTietHoaDon', 'U') IS NOT NULL
-        BEGIN
-          INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
-          VALUES (@MaHD, @MaSP, @SoLuong, @DonGia);
-        END
-      `);
+    for (const item of mergedItems) {
+      await new sql.Request(transaction)
+        .input("MaHD", sql.VarChar(50), maHD)
+        .input("MaSP", sql.VarChar(50), item.productCode)
+        .input("SoLuong", sql.Int, item.quantity)
+        .input("DonGia", sql.Decimal(10, 2), item.unitPrice).query(`
+          IF OBJECT_ID('dbo.ChiTietHoaDon', 'U') IS NOT NULL
+          BEGIN
+            INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
+            VALUES (@MaHD, @MaSP, @SoLuong, @DonGia);
+          END
+        `);
 
-    await deductStock(
-      transaction,
-      payload.branch,
-      payload.productCode,
-      payload.quantity,
-    );
+      await deductStock(
+        transaction,
+        payload.branch,
+        item.productCode,
+        item.quantity,
+      );
+    }
 
     await transaction.commit();
+
+    const firstItem = mergedItems[0] || null;
     return {
       MaHD: maHD,
-      MaSP: payload.productCode,
-      SoLuong: payload.quantity,
       TongTien: totalAmount,
       GhiChu: payload.note,
       ChiNhanh: payload.branch,
       MaNV: employeeId,
-      TenHang: productName,
-      DonGia: Number(unitPrice || 0),
+      items: mergedItems,
+      ...(firstItem
+        ? {
+            MaSP: firstItem.productCode,
+            SoLuong: firstItem.quantity,
+            TenHang: firstItem.productName,
+            DonGia: Number(firstItem.unitPrice || 0),
+          }
+        : {}),
       NgayTao: new Date().toISOString(),
     };
   } catch (error) {
@@ -982,6 +1066,7 @@ module.exports = {
   deleteEmployee,
   listEmployeesByBranch,
   listInvoicesByBranch,
+  getInvoiceDetails,
   createInvoice,
   updateInvoice,
   deleteInvoice,

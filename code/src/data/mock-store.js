@@ -192,42 +192,152 @@ function defaultEmployeeId(branch) {
 }
 
 function createInvoiceLocal(payload) {
-  const product = products[payload.productCode] || {
-    TenHang: payload.productName || payload.productCode,
-    Gia:
-      payload.unitPrice > 0
-        ? Number(payload.unitPrice)
-        : payload.quantity > 0
-          ? Number(payload.totalAmount || 0) / Number(payload.quantity || 1)
-          : 0,
-  };
+  const rawItems = Array.isArray(payload.items) && payload.items.length
+    ? payload.items
+    : [
+        {
+          productCode: payload.productCode,
+          productName: payload.productName,
+          unitPrice: payload.unitPrice,
+          quantity: payload.quantity,
+          totalAmount: payload.totalAmount,
+        },
+      ];
 
-  products[payload.productCode] = {
-    TenHang: payload.productName || product.TenHang,
-    Gia:
-      payload.unitPrice > 0
-        ? Number(payload.unitPrice)
-        : Number(product.Gia || 0),
-  };
+  const normalizedItems = rawItems
+    .map((rawItem) => {
+      const productCode = String(rawItem?.productCode || "").trim();
+      const quantity = Number(rawItem?.quantity || 0);
+      if (!productCode || quantity <= 0) {
+        return null;
+      }
 
-  const invoice = {
-    MaHD: `HD_${Date.now()}`,
+      const existing = products[productCode] || {
+        TenHang: String(rawItem?.productName || "").trim() || productCode,
+        Gia: Number(rawItem?.unitPrice || 0),
+      };
+
+      const unitPrice =
+        Number(rawItem?.unitPrice || 0) > 0
+          ? Number(rawItem.unitPrice)
+          : Number(existing.Gia || 0);
+      const productName =
+        String(rawItem?.productName || "").trim() || existing.TenHang;
+
+      products[productCode] = {
+        TenHang: productName,
+        Gia: unitPrice,
+      };
+
+      return {
+        productCode,
+        productName,
+        unitPrice,
+        quantity,
+        totalAmount: Number(quantity || 0) * Number(unitPrice || 0),
+      };
+    })
+    .filter(Boolean);
+
+  if (!normalizedItems.length) {
+    throw new Error("Each invoice item must include productCode and quantity > 0");
+  }
+
+  const mergedItemsByProduct = new Map();
+  for (const item of normalizedItems) {
+    const existing = mergedItemsByProduct.get(item.productCode);
+    if (!existing) {
+      mergedItemsByProduct.set(item.productCode, { ...item });
+      continue;
+    }
+
+    if (Number(existing.unitPrice || 0) !== Number(item.unitPrice || 0)) {
+      throw new Error(
+        `Duplicate product ${item.productCode} has different unit prices in the same invoice`,
+      );
+    }
+
+    existing.quantity += Number(item.quantity || 0);
+    existing.totalAmount =
+      Number(existing.quantity || 0) * Number(existing.unitPrice || 0);
+  }
+
+  const mergedItems = Array.from(mergedItemsByProduct.values());
+
+  const maHD = `HD_${Date.now()}`;
+  const createdAt = new Date().toISOString();
+  for (const item of mergedItems) {
+    invoices.push({
+      MaHD: maHD,
+      ChiNhanh: payload.branch,
+      MaNV: payload.employeeId || defaultEmployeeId(payload.branch),
+      MaSP: item.productCode,
+      SoLuong: item.quantity,
+      TongTien: item.totalAmount,
+      GhiChu: payload.note,
+      NgayTao: createdAt,
+      TenHang: item.productName,
+      DonGia: Number(item.unitPrice || 0),
+    });
+  }
+
+  const totalAmount = mergedItems.reduce(
+    (sum, item) => sum + Number(item.totalAmount || 0),
+    0,
+  );
+  const firstItem = mergedItems[0];
+
+  return {
+    MaHD: maHD,
     ChiNhanh: payload.branch,
     MaNV: payload.employeeId || defaultEmployeeId(payload.branch),
-    MaSP: payload.productCode,
-    SoLuong: payload.quantity,
-    TongTien: payload.totalAmount,
     GhiChu: payload.note,
-    NgayTao: new Date().toISOString(),
-    TenHang: products[payload.productCode].TenHang,
-    DonGia: Number(products[payload.productCode].Gia || 0),
+    NgayTao: createdAt,
+    TongTien: totalAmount,
+    items: mergedItems,
+    MaSP: firstItem.productCode,
+    SoLuong: firstItem.quantity,
+    TenHang: firstItem.productName,
+    DonGia: Number(firstItem.unitPrice || 0),
   };
-  invoices.push(invoice);
-  return invoice;
 }
 
 function listInvoicesByBranch(branch) {
-  return invoices.filter((item) => item.ChiNhanh === branch);
+  const branchInvoices = invoices.filter((item) => item.ChiNhanh === branch);
+  const groups = new Map();
+
+  for (const item of branchInvoices) {
+    if (!groups.has(item.MaHD)) {
+      groups.set(item.MaHD, {
+        MaHD: item.MaHD,
+        TongTien: 0,
+        SoMon: 0,
+        GhiChu: item.GhiChu,
+        NgayTao: item.NgayTao,
+        ChiNhanh: item.ChiNhanh,
+        MaNV: item.MaNV,
+        HoTenNhanVien: null, // Would fetch from employees if we cared
+      });
+    }
+    const g = groups.get(item.MaHD);
+    g.TongTien += Number(item.SoLuong || 0) * Number(item.DonGia || 0);
+    g.SoMon += 1;
+  }
+  
+  return Array.from(groups.values()).sort((a, b) => new Date(b.NgayTao) - new Date(a.NgayTao));
+}
+
+function getInvoiceDetailsLocal(branch, invoiceId) {
+  return invoices
+    .filter((item) => item.ChiNhanh === branch && item.MaHD === invoiceId)
+    .map(ctd => ({
+      MaHD: ctd.MaHD,
+      MaSP: ctd.MaSP,
+      TenHang: ctd.TenHang,
+      SoLuong: ctd.SoLuong,
+      DonGia: ctd.DonGia,
+      ThanhTien: Number(ctd.SoLuong || 0) * Number(ctd.DonGia || 0)
+    }));
 }
 
 function updateInvoiceLocal(branch, invoiceId, payload) {
@@ -237,7 +347,11 @@ function updateInvoiceLocal(branch, invoiceId, payload) {
   if (index < 0) {
     throw new Error(`Invoice ${invoiceId} not found in ${branch}`);
   }
-  const nextMaSP = payload.productCode || invoices[index].MaSP;
+  const currentRows = invoices.filter(
+    (item) => item.MaHD === invoiceId && item.ChiNhanh === branch,
+  );
+  const baseRow = currentRows[0];
+  const nextMaSP = payload.productCode || baseRow.MaSP;
   const prevProduct = products[nextMaSP] || { TenHang: nextMaSP, Gia: 0 };
   const nextUnitPrice =
     payload.unitPrice > 0
@@ -252,17 +366,22 @@ function updateInvoiceLocal(branch, invoiceId, payload) {
   };
 
   const next = {
-    ...invoices[index],
-    MaNV: payload.employeeId || invoices[index].MaNV || null,
+    ...baseRow,
+    MaNV: payload.employeeId || baseRow.MaNV || null,
     MaSP: nextMaSP,
-    SoLuong: payload.quantity > 0 ? payload.quantity : invoices[index].SoLuong,
+    SoLuong: payload.quantity > 0 ? payload.quantity : baseRow.SoLuong,
     TongTien:
-      payload.totalAmount > 0 ? payload.totalAmount : invoices[index].TongTien,
-    GhiChu: payload.note ?? invoices[index].GhiChu,
+      payload.totalAmount > 0 ? payload.totalAmount : baseRow.TongTien,
+    GhiChu: payload.note ?? baseRow.GhiChu,
     TenHang: products[nextMaSP].TenHang,
     DonGia: Number(products[nextMaSP].Gia || 0),
   };
-  invoices[index] = next;
+  for (let i = invoices.length - 1; i >= 0; i -= 1) {
+    if (invoices[i].MaHD === invoiceId && invoices[i].ChiNhanh === branch) {
+      invoices.splice(i, 1);
+    }
+  }
+  invoices.push(next);
   return next;
 }
 
@@ -273,7 +392,12 @@ function deleteInvoiceLocal(branch, invoiceId) {
   if (index < 0) {
     throw new Error(`Invoice ${invoiceId} not found in ${branch}`);
   }
-  const [deleted] = invoices.splice(index, 1);
+  const deleted = invoices[index];
+  for (let i = invoices.length - 1; i >= 0; i -= 1) {
+    if (invoices[i].MaHD === invoiceId && invoices[i].ChiNhanh === branch) {
+      invoices.splice(i, 1);
+    }
+  }
   return deleted;
 }
 
@@ -446,6 +570,7 @@ module.exports = {
   deleteEmployee,
   listAllEmployees,
   listInvoicesByBranch,
+  getInvoiceDetailsLocal,
   createInvoiceLocal,
   updateInvoiceLocal,
   deleteInvoiceLocal,

@@ -161,6 +161,27 @@ app.get("/api/invoices", async (req, res) => {
   }
 });
 
+app.get("/api/invoices/:invoiceId/details", async (req, res) => {
+  try {
+    const { invoiceId } = req.params;
+    const branch = normalizeBranch(req.query.branch);
+    if (!branch || isCentralBranch(branch)) {
+      return res.status(400).json({
+        message: "branch is required and must be HUE, SAIGON, or HANOI",
+      });
+    }
+    const { getInvoiceDetails } = require("./src/services/store-service");
+    const rows = await getInvoiceDetails(branch, invoiceId);
+    return res.json({
+      branch,
+      invoiceId,
+      data: rows,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
 app.post("/api/invoices", async (req, res) => {
   try {
     const branch = normalizeBranch(req.body.branch);
@@ -170,26 +191,54 @@ app.post("/api/invoices", async (req, res) => {
       });
     }
 
-    const payload = {
-      branch,
+    const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+    const parsedItems = rawItems
+      .map((item) => ({
+        productCode: String(item?.productCode || "").trim(),
+        productName: item?.productName ? String(item.productName).trim() : "",
+        unitPrice: Number(item?.unitPrice || 0),
+        quantity: Number(item?.quantity || 0),
+        totalAmount: Number(item?.totalAmount || 0),
+      }))
+      .filter((item) => item.productCode || item.quantity || item.unitPrice);
+
+    const fallbackSingleItem = {
       productCode: String(req.body.productCode || "").trim(),
-      employeeId: req.body.employeeId
-        ? String(req.body.employeeId).trim()
-        : "",
-      quantity: Number(req.body.quantity || 0),
-      totalAmount: Number(req.body.totalAmount || 0),
       productName: req.body.productName
         ? String(req.body.productName).trim()
         : "",
       unitPrice: Number(req.body.unitPrice || 0),
-      note: String(req.body.note || "").trim(),
+      quantity: Number(req.body.quantity || 0),
+      totalAmount: Number(req.body.totalAmount || 0),
     };
 
-    if (!payload.productCode || payload.quantity <= 0) {
+    const items = parsedItems.length
+      ? parsedItems
+      : fallbackSingleItem.productCode
+        ? [fallbackSingleItem]
+        : [];
+
+    if (!items.length) {
       return res.status(400).json({
-        message: "productCode and quantity are required and must be positive",
+        message: "items is required and must contain at least one line",
       });
     }
+
+    if (items.some((item) => !item.productCode || item.quantity <= 0)) {
+      return res.status(400).json({
+        message: "Each item must include productCode and quantity > 0",
+      });
+    }
+
+    const payload = {
+      branch,
+      employeeId: req.body.employeeId
+        ? String(req.body.employeeId).trim()
+        : "",
+      items,
+      totalAmount: Number(req.body.totalAmount || 0),
+      note: String(req.body.note || "").trim(),
+    };
 
     const created = await createInvoice(payload);
     return res.status(201).json({

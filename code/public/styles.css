@@ -359,6 +359,7 @@ th {
 
 tbody tr {
   transition: background 0.16s ease;
+  cursor: pointer;
 }
 
 tbody tr:hover {
@@ -373,6 +374,11 @@ tbody tr.is-selected {
   display: grid;
   grid-template-columns: repeat(3, minmax(150px, 1fr));
   gap: 0.75rem;
+  align-items: end;
+}
+
+.form-grid > * {
+  min-width: 0;
 }
 
 .compact-top {
@@ -388,6 +394,70 @@ tbody tr.is-selected {
 
 .inline-form label {
   min-width: 220px;
+}
+
+.invoice-items {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.invoice-create-grid {
+  grid-template-columns: minmax(130px, 1.7fr) minmax(130px, 1.6fr) minmax(90px, 1fr) minmax(80px, 0.7fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.invoice-create-grid-central {
+  grid-template-columns: minmax(130px, 1.7fr) minmax(130px, 1.6fr) minmax(90px, 1fr) minmax(80px, 0.7fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.invoice-item-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.7fr) minmax(130px, 1.6fr) minmax(90px, 1fr) minmax(80px, 0.7fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+  border: 1px solid #d9e7f1;
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: #fff;
+}
+
+.invoice-meta {
+  width: 100%;
+}
+
+.invoice-meta-employee,
+.invoice-meta-total {
+  width: 100%;
+}
+
+.invoice-item-field {
+  min-width: 0;
+}
+
+.invoice-meta-action {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 100%;
+}
+
+.invoice-add-item-btn {
+  width: 100%;
+  max-width: 230px;
+}
+
+.invoice-item-actions {
+  display: flex;
+  align-items: end;
+}
+
+.invoice-item-actions .danger {
+  padding: 0.56rem 0.85rem;
+  white-space: nowrap;
 }
 
 .stats-grid {
@@ -429,8 +499,13 @@ label.full {
   grid-column: 1 / -1;
 }
 
+.form-grid > .full {
+  grid-column: 1 / -1;
+}
+
 input,
 select {
+  width: 100%;
   border: 1px solid #cfdce6;
   border-radius: 12px;
   padding: 0.58rem 0.64rem;
@@ -489,5 +564,18 @@ select:focus {
 
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .invoice-item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-create-grid,
+  .invoice-create-grid-central {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-item-actions {
+    justify-content: flex-start;
   }
 }
