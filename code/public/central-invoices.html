@@ -105,15 +105,18 @@
           <p class="hint">Danh sach du lieu (chi doc o giao dien).</p>
           <div class="table-wrap" id="centralInvoicesTableWrap"></div>
 
-          <div class="section-head compact-top" id="centralInvoiceDetailsHeader" style="display: none;">
-            <h3>Chi tiết hóa đơn: <span id="centralInvoiceDetailsTitle"></span></h3>
-          </div>
-          <div class="table-wrap" id="centralInvoiceDetailsTableWrap" style="display: none; margin-bottom: 1rem;"></div>
-
           <pre class="result-box" id="centralInvoiceResult">
-Chưa co thao tac.</pre
-          >
+Chưa co thao tac.</pre>
         </section>
+
+     
+        <dialog id="centralInvoiceDetailsModal" class="modal">
+          <div class="modal-header">
+            <h3>Chi tiết hóa đơn: <span id="centralInvoiceDetailsTitle"></span></h3>
+            <button class="close-modal-btn" id="closeCentralInvoiceDetailsModal">&times;</button>
+          </div>
+          <div class="table-wrap" id="centralInvoiceDetailsTableWrap"></div>
+        </dialog>
       </section>
     </main>
     <script src="/app.js"></script>

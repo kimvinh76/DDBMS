@@ -704,9 +704,28 @@ async function setupBranchInvoicesPage() {
   const invoiceResult = document.getElementById("invoiceResult");
   const invoiceCreateForm = document.getElementById("invoiceCreateForm");
   
-  const invoiceDetailsHeader = document.getElementById("invoiceDetailsHeader");
+  const invoiceDetailsModal = document.getElementById("invoiceDetailsModal");
+  const closeInvoiceDetailsModal = document.getElementById("closeInvoiceDetailsModal");
   const invoiceDetailsTitle = document.getElementById("invoiceDetailsTitle");
   const invoiceDetailsTableWrap = document.getElementById("invoiceDetailsTableWrap");
+
+  if (closeInvoiceDetailsModal) {
+    closeInvoiceDetailsModal.addEventListener("click", () => {
+      invoiceDetailsModal.close();
+    });
+  }
+
+
+  if (invoiceDetailsModal) {
+    invoiceDetailsModal.addEventListener("click", (event) => {
+      const rect = invoiceDetailsModal.getBoundingClientRect();
+      const inDialog = event.clientX >= rect.left && event.clientX <= rect.right &&
+                     event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if (!inDialog) {
+        invoiceDetailsModal.close();
+      }
+    });
+  }
 
   const branchInvoiceItems = attachInvoiceLineItems(
     invoiceCreateForm,
@@ -719,8 +738,6 @@ async function setupBranchInvoicesPage() {
 
   async function loadInvoices() {
     invoicesTableWrap.innerHTML = '<p class="subtitle">Đang tải hoa don...</p>';
-    if (invoiceDetailsHeader) invoiceDetailsHeader.style.display = 'none';
-    if (invoiceDetailsTableWrap) invoiceDetailsTableWrap.style.display = 'none';
     
     const result = await fetchJSON(`/api/invoices?branch=${branch}`);
     renderTable(invoicesTableWrap, result.data, {
@@ -728,12 +745,9 @@ async function setupBranchInvoicesPage() {
       emptyMessage: "Chưa co hoa don nao trong chi nhánh.",
       onRowSelect: async (row) => {
         if (!row.MaHD) return;
-        if (invoiceDetailsHeader) {
-          invoiceDetailsHeader.style.display = 'flex';
+        if (invoiceDetailsModal) {
           invoiceDetailsTitle.textContent = row.MaHD;
-        }
-        if (invoiceDetailsTableWrap) {
-          invoiceDetailsTableWrap.style.display = 'block';
+          invoiceDetailsModal.showModal();
           invoiceDetailsTableWrap.innerHTML = '<p class="subtitle">Đang tải chi tiết...</p>';
           try {
             const detailRes = await fetchJSON(`/api/invoices/${row.MaHD}/details?branch=${branch}`);
@@ -1144,9 +1158,28 @@ async function setupCentralInvoicesPage() {
   const readBranch = document.getElementById("centralInvoicesReadBranch");
   const createForm = document.getElementById("centralInvoiceCreateForm");
 
-  const centralInvoiceDetailsHeader = document.getElementById("centralInvoiceDetailsHeader");
+  const centralInvoiceDetailsModal = document.getElementById("centralInvoiceDetailsModal");
+  const closeCentralInvoiceDetailsModal = document.getElementById("closeCentralInvoiceDetailsModal");
   const centralInvoiceDetailsTitle = document.getElementById("centralInvoiceDetailsTitle");
   const centralInvoiceDetailsTableWrap = document.getElementById("centralInvoiceDetailsTableWrap");
+
+  if (closeCentralInvoiceDetailsModal) {
+    closeCentralInvoiceDetailsModal.addEventListener("click", () => {
+      centralInvoiceDetailsModal.close();
+    });
+  }
+
+
+  if (centralInvoiceDetailsModal) {
+    centralInvoiceDetailsModal.addEventListener("click", (event) => {
+      const rect = centralInvoiceDetailsModal.getBoundingClientRect();
+      const inDialog = event.clientX >= rect.left && event.clientX <= rect.right &&
+                     event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if (!inDialog) {
+        centralInvoiceDetailsModal.close();
+      }
+    });
+  }
 
   const centralInvoiceItems = attachInvoiceLineItems(
     createForm,
@@ -1166,8 +1199,6 @@ async function setupCentralInvoicesPage() {
   async function loadInvoices() {
     const branch = readBranch.value;
     tableWrap.innerHTML = '<p class="subtitle">Đang tải hoa don...</p>';
-    if (centralInvoiceDetailsHeader) centralInvoiceDetailsHeader.style.display = 'none';
-    if (centralInvoiceDetailsTableWrap) centralInvoiceDetailsTableWrap.style.display = 'none';
 
     const result = await fetchJSON(`/api/invoices?branch=${branch}`);
     renderTable(tableWrap, result.data, {
@@ -1175,12 +1206,9 @@ async function setupCentralInvoicesPage() {
       emptyMessage: "Chưa co hoa don nao o chi nhánh nay.",
       onRowSelect: async (row) => {
         if (!row.MaHD) return;
-        if (centralInvoiceDetailsHeader) {
-          centralInvoiceDetailsHeader.style.display = 'flex';
+        if (centralInvoiceDetailsModal) {
           centralInvoiceDetailsTitle.textContent = row.MaHD;
-        }
-        if (centralInvoiceDetailsTableWrap) {
-          centralInvoiceDetailsTableWrap.style.display = 'block';
+          centralInvoiceDetailsModal.showModal();
           centralInvoiceDetailsTableWrap.innerHTML = '<p class="subtitle">Đang tải chi tiết...</p>';
           try {
             const detailRes = await fetchJSON(`/api/invoices/${row.MaHD}/details?branch=${branch}`);

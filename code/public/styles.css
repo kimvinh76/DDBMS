@@ -528,6 +528,52 @@ select:focus {
   min-height: 58px;
 }
 
+/* Modal Styling */
+.modal {
+  border: none;
+  border-radius: 14px;
+  padding: 1.5rem;
+  background: var(--card);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 800px;
+}
+.modal::backdrop {
+  background: rgba(10, 25, 40, 0.4);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h3 {
+  margin: 0;
+  color: var(--ink);
+}
+.close-modal-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.6rem;
+  padding: 0 0.5rem;
+  line-height: 1;
+  transition: color 0.2s;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+}
+.close-modal-btn:hover {
+  color: #a51e1e;
+  background: var(--bg-hover, rgba(0,0,0,0.05));
+}
+
 @keyframes rise {
   from {
     transform: translateY(18px);
