@@ -437,6 +437,53 @@ function listInventory(branch) {
   }));
 }
 
+function listProducts() {
+  return Object.keys(products).map((code) => ({
+    productCode: code,
+    productName: products[code].TenHang || code,
+    unitPrice: Number(products[code].Gia || 0),
+  }));
+}
+
+function createProduct(payload) {
+  const code = String(payload.productCode || "").trim();
+  if (products[code]) {
+    throw new Error(`Product ${code} already exists.`);
+  }
+  products[code] = {
+    TenHang: String(payload.productName || code).trim(),
+    Gia: Number(payload.unitPrice || 0),
+  };
+  return getProductByCode("CENTRAL", code);
+}
+
+function updateProduct(productCode, payload) {
+  const code = String(productCode || "").trim();
+  if (!products[code]) {
+    throw new Error(`Product ${code} not found.`);
+  }
+  if (payload.productName !== undefined) {
+    products[code].TenHang = String(payload.productName).trim();
+  }
+  if (payload.unitPrice !== undefined) {
+    products[code].Gia = Number(payload.unitPrice);
+  }
+  return getProductByCode("CENTRAL", code);
+}
+
+function deleteProduct(productCode) {
+  const code = String(productCode || "").trim();
+  if (!products[code]) {
+    throw new Error(`Product ${code} not found.`);
+  }
+  delete products[code];
+  // Ideally cascade delete inventory too, but keeping simple for demo
+  if (inventory.HUE && inventory.HUE[code]) delete inventory.HUE[code];
+  if (inventory.SAIGON && inventory.SAIGON[code]) delete inventory.SAIGON[code];
+  if (inventory.HANOI && inventory.HANOI[code]) delete inventory.HANOI[code];
+  return { deleted: true, productCode: code };
+}
+
 function getProductByCode(branch, productCode) {
   const code = String(productCode || "").trim();
   const product = products[code];
@@ -453,15 +500,21 @@ function getProductByCode(branch, productCode) {
 
 function createInventoryItem(branch, payload) {
   const bucket = inventory[branch] || (inventory[branch] = {});
-  if (bucket[payload.productCode] !== undefined) {
+  const code = String(payload.productCode || "").trim();
+  if (!products[code]) {
     throw new Error(
-      `Product ${payload.productCode} already exists in ${branch}`,
+      `Product ${code} not found in ${branch}. Please create product first from Central product management.`,
     );
   }
-  bucket[payload.productCode] = payload.quantity;
+  if (bucket[code] !== undefined) {
+    throw new Error(
+      `Product ${code} already exists in ${branch}`,
+    );
+  }
+  bucket[code] = payload.quantity;
   return {
     branch,
-    productCode: payload.productCode,
+    productCode: code,
     quantity: payload.quantity,
   };
 }
@@ -577,6 +630,10 @@ module.exports = {
   revenueReport,
   getInventory,
   listInventory,
+  listProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
   getProductByCode,
   createInventoryItem,
   updateInventoryItem,

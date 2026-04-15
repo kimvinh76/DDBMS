@@ -818,7 +818,6 @@ async function setupBranchInventoryPage() {
   const inventoryTableWrap = document.getElementById("inventoryTableWrap");
   const inventoryResult = document.getElementById("inventoryResult");
   const inventoryUpdateForm = document.getElementById("inventoryUpdateForm");
-  const inventoryDeleteForm = document.getElementById("inventoryDeleteForm");
 
   inventoryApiLine.textContent = `GET /api/inventory?branch=${branch}`;
 
@@ -831,7 +830,6 @@ async function setupBranchInventoryPage() {
       emptyMessage: "Chưa co san pham ton kho nao.",
       onRowSelect: (row) => {
         inventoryUpdateForm.elements.productCode.value = row.productCode || "";
-        inventoryDeleteForm.elements.productCode.value = row.productCode || "";
         inventoryUpdateForm.elements.quantity.value = row.quantity || "";
       },
     });
@@ -882,25 +880,6 @@ async function setupBranchInventoryPage() {
         },
       );
       inventoryResult.textContent = JSON.stringify(result, null, 2);
-      await loadInventory();
-    } catch (error) {
-      inventoryResult.textContent = `Lỗi: ${error.message}`;
-    }
-  });
-
-  inventoryDeleteForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.target);
-    const productCode = String(form.get("productCode") || "").trim();
-    try {
-      const result = await fetchJSON(
-        `/api/inventory/${encodeURIComponent(productCode)}?branch=${branch}`,
-        {
-          method: "DELETE",
-        },
-      );
-      inventoryResult.textContent = JSON.stringify(result, null, 2);
-      event.target.reset();
       await loadInventory();
     } catch (error) {
       inventoryResult.textContent = `Lỗi: ${error.message}`;
@@ -1291,12 +1270,10 @@ async function setupCentralInventoryPage() {
   const readBranch = document.getElementById("centralInventoryReadBranch");
   const createForm = document.getElementById("centralInventoryCreateForm");
   const updateForm = document.getElementById("centralInventoryUpdateForm");
-  const deleteForm = document.getElementById("centralInventoryDeleteForm");
 
   function syncFormsBranch(branch) {
     createForm.elements.branch.value = branch;
     updateForm.elements.branch.value = branch;
-    deleteForm.elements.branch.value = branch;
   }
 
   async function loadInventory() {
@@ -1310,7 +1287,6 @@ async function setupCentralInventoryPage() {
         syncFormsBranch(row.branch || branch);
         updateForm.elements.productCode.value = row.productCode || "";
         updateForm.elements.quantity.value = row.quantity || "";
-        deleteForm.elements.productCode.value = row.productCode || "";
       },
     });
   }
@@ -1379,30 +1355,105 @@ async function setupCentralInventoryPage() {
     }
   });
 
-  deleteForm.addEventListener("submit", async (event) => {
+  syncFormsBranch(readBranch.value);
+  await loadInventory();
+}
+
+async function setupCentralProductsPage() {
+  if (!ensureCentralBranch()) {
+    return;
+  }
+  setupCentralShell();
+  setupCrudSwitcher("centralProductCrudSwitch");
+
+  const tableWrap = document.getElementById("centralProductTableWrap");
+  const resultBox = document.getElementById("centralProductResult");
+  const createForm = document.getElementById("centralProductCreateForm");
+  const updateForm = document.getElementById("centralProductUpdateForm");
+  const deleteForm = document.getElementById("centralProductDeleteForm");
+
+  async function loadProducts() {
+    tableWrap.innerHTML = '<p class="subtitle">Đang tải danh sách sản phẩm...</p>';
+    const result = await fetchJSON("/api/products");
+    renderTable(tableWrap, result, {
+      tableId: "central-products",
+      emptyMessage: "Chưa có sản phẩm.",
+      onRowSelect: (row) => {
+        updateForm.elements.productCode.value = row.productCode || "";
+        updateForm.elements.productName.value = row.productName || "";
+        updateForm.elements.unitPrice.value = row.unitPrice || "";
+        deleteForm.elements.productCode.value = row.productCode || "";
+      },
+    });
+  }
+
+  document.getElementById("loadCentralProducts").addEventListener("click", (event) => {
     event.preventDefault();
-    const form = new FormData(deleteForm);
-    const branch = String(form.get("branch"));
-    const productCode = String(form.get("productCode") || "").trim();
+    loadProducts().catch((error) => {
+      tableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
+    });
+  });
+
+  createForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(createForm);
+    const payload = {
+      productCode: String(form.get("productCode") || "").trim(),
+      productName: String(form.get("productName") || "").trim(),
+      unitPrice: Number(form.get("unitPrice") || 0),
+    };
     try {
-      const result = await fetchJSON(
-        `/api/inventory/${encodeURIComponent(productCode)}?branch=${branch}`,
-        {
-          method: "DELETE",
-        },
-      );
+      const result = await fetchJSON("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       resultBox.textContent = JSON.stringify(result, null, 2);
-      deleteForm.reset();
-      readBranch.value = branch;
-      syncFormsBranch(branch);
-      await loadInventory();
+      createForm.reset();
+      await loadProducts();
     } catch (error) {
       resultBox.textContent = `Lỗi: ${error.message}`;
     }
   });
 
-  syncFormsBranch(readBranch.value);
-  await loadInventory();
+  updateForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(updateForm);
+    const productCode = String(form.get("productCode") || "").trim();
+    const payload = {
+      productName: form.get("productName"),
+      unitPrice: form.get("unitPrice") === "" ? undefined : Number(form.get("unitPrice")),
+    };
+    try {
+      const result = await fetchJSON(`/api/products/${encodeURIComponent(productCode)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      resultBox.textContent = JSON.stringify(result, null, 2);
+      await loadProducts();
+    } catch (error) {
+      resultBox.textContent = `Lỗi: ${error.message}`;
+    }
+  });
+
+  deleteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(deleteForm);
+    const productCode = String(form.get("productCode") || "").trim();
+    try {
+      const result = await fetchJSON(`/api/products/${encodeURIComponent(productCode)}`, {
+        method: "DELETE",
+      });
+      resultBox.textContent = JSON.stringify(result, null, 2);
+      deleteForm.reset();
+      await loadProducts();
+    } catch (error) {
+      resultBox.textContent = `Lỗi: ${error.message}`;
+    }
+  });
+
+  await loadProducts();
 }
 
 async function setupCentralTransferPage() {
@@ -1510,6 +1561,11 @@ async function setupCentralTransferPage() {
 
     if (page === "central-inventory") {
       await setupCentralInventoryPage();
+      return;
+    }
+
+    if (page === "central-products") {
+      await setupCentralProductsPage();
       return;
     }
 

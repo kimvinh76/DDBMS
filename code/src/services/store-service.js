@@ -751,6 +751,93 @@ async function listInventory(branch, productCode) {
   };
 }
 
+async function listProducts() {
+  if (isMockMode()) {
+    return mock.listProducts();
+  }
+  const pool = await getPool("CENTRAL");
+  const result = await pool.request().query(`
+    IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+      SELECT MaSP AS productCode, TenHang AS productName, Gia AS unitPrice FROM dbo.HangHoa
+    ELSE
+      SELECT '' AS productCode, '' AS productName, 0 AS unitPrice WHERE 1=0
+  `);
+  return result.recordset;
+}
+
+async function createProduct(payload) {
+  if (isMockMode()) {
+    return mock.createProduct(payload);
+  }
+  const pool = await getPool("CENTRAL");
+  const code = String(payload.productCode || "").trim();
+  const name = String(payload.productName || code).trim();
+  const price = Number(payload.unitPrice || 0);
+
+  // Use Central directly, or let replication flow to branches.
+  await pool.request()
+    .input('MaSP', sql.VarChar(50), code)
+    .input('TenHang', sql.NVarChar(100), name)
+    .input('Gia', sql.Decimal(10, 2), price)
+    .query(`
+      IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
+          INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia) VALUES (@MaSP, @TenHang, @Gia);
+        ELSE
+          THROW 50000, 'Product already exists', 1;
+      END
+    `);
+  return { productCode: code, productName: name, unitPrice: price };
+}
+
+async function updateProduct(productCode, payload) {
+  if (isMockMode()) {
+    return mock.updateProduct(productCode, payload);
+  }
+  const pool = await getPool("CENTRAL");
+  const code = String(productCode || "").trim();
+  
+  const req = pool.request().input('MaSP', sql.VarChar(50), code);
+  let sets = [];
+  if (payload.productName !== undefined) {
+    req.input('TenHang', sql.NVarChar(100), String(payload.productName).trim());
+    sets.push("TenHang = @TenHang");
+  }
+  if (payload.unitPrice !== undefined) {
+    req.input('Gia', sql.Decimal(10, 2), Number(payload.unitPrice || 0));
+    sets.push("Gia = @Gia");
+  }
+  
+  if (sets.length > 0) {
+    await req.query(`
+      IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+      BEGIN
+        UPDATE dbo.HangHoa SET ${sets.join(', ')} WHERE MaSP = @MaSP;
+      END
+    `);
+  }
+  return { updated: true, productCode: code };
+}
+
+async function deleteProduct(productCode) {
+  if (isMockMode()) {
+    return mock.deleteProduct(productCode);
+  }
+  const pool = await getPool("CENTRAL");
+  const code = String(productCode || "").trim();
+
+  await pool.request()
+    .input('MaSP', sql.VarChar(50), code)
+    .query(`
+      IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
+      BEGIN
+        DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP;
+      END
+    `);
+  return { deleted: true, productCode: code };
+}
+
 async function getProductByCode(branch, productCode) {
   if (isMockMode()) {
     return mock.getProductByCode(branch, productCode);
@@ -790,22 +877,27 @@ async function createInventoryItem(branch, payload) {
   }
 
   const pool = await getPool(branch);
-  const productName = payload.productName || payload.productCode;
-  const unitPrice = Number.isFinite(Number(payload.unitPrice))
-    ? Number(payload.unitPrice)
-    : 0;
+  const productCode = String(payload.productCode || "").trim();
+
+  const productCheck = await pool
+    .request()
+    .input("MaSP", sql.VarChar(50), productCode)
+    .query("SELECT TOP 1 MaSP FROM HangHoa WHERE MaSP = @MaSP;");
+
+  if (!productCheck.recordset.length) {
+    throw new Error(
+      `Product ${productCode} not found in ${branch}. Please create product first from Central product management.`,
+    );
+  }
 
   await pool
     .request()
     .input("ChiNhanh", sql.VarChar(10), branch)
-    .input("MaSP", sql.VarChar(50), payload.productCode)
-    .input("TenHang", sql.NVarChar(100), productName)
-    .input("Gia", sql.Decimal(10, 2), unitPrice)
+    .input("MaSP", sql.VarChar(50), productCode)
     .input("SoLuongTon", sql.Int, payload.quantity).query(`
-      IF NOT EXISTS (SELECT 1 FROM HangHoa WHERE MaSP = @MaSP)
+      IF EXISTS (SELECT 1 FROM TonKho WHERE MaSP = @MaSP AND ChiNhanh = @ChiNhanh)
       BEGIN
-        INSERT INTO HangHoa (MaSP, TenHang, Gia)
-        VALUES (@MaSP, @TenHang, @Gia);
+        THROW 50000, 'Inventory item already exists in this branch', 1;
       END
 
       INSERT INTO TonKho (MaSP, SoLuongTon, ChiNhanh)
@@ -815,7 +907,7 @@ async function createInventoryItem(branch, payload) {
   const inserted = await pool
     .request()
     .input("ChiNhanh", sql.VarChar(10), branch)
-    .input("MaSP", sql.VarChar(50), payload.productCode)
+    .input("MaSP", sql.VarChar(50), productCode)
     .query(
       "SELECT TOP 1 MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP;",
     );
@@ -1074,6 +1166,10 @@ module.exports = {
   getNationalRevenue,
   transferStockDistributed,
   listInventory,
+  listProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
   getProductByCode,
   createInventoryItem,
   updateInventoryItem,

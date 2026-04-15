@@ -21,6 +21,10 @@ const {
   getNationalRevenue,
   transferStockDistributed,
   listInventory,
+  listProducts,
+  createProduct,
+  updateProduct,
+  deleteProduct,
   getProductByCode,
   createInventoryItem,
   updateInventoryItem,
@@ -378,6 +382,59 @@ app.get("/api/inventory", async (req, res) => {
   }
 });
 
+app.get("/api/products", async (req, res) => {
+  try {
+    const data = await listProducts();
+    return res.json(data);
+  } catch (error) {
+    if (error.message.includes("Login failed")) {
+      return res.status(401).json({ message: error.message });
+    }
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.post("/api/products", async (req, res) => {
+  try {
+    const payload = {
+      productCode: req.body.productCode,
+      productName: req.body.productName,
+      unitPrice: req.body.unitPrice,
+    };
+    if (!payload.productCode) {
+      return res.status(400).json({ message: "productCode is required" });
+    }
+    const data = await createProduct(payload);
+    return res.status(201).json({ message: "Product created", data });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.put("/api/products/:productCode", async (req, res) => {
+  try {
+    const code = req.params.productCode;
+    const payload = {
+      productName: req.body.productName,
+      unitPrice: req.body.unitPrice,
+    };
+    const data = await updateProduct(code, payload);
+    return res.json({ message: "Product updated", data });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.delete("/api/products/:productCode", async (req, res) => {
+  try {
+    const code = req.params.productCode;
+    const data = await deleteProduct(code);
+    return res.json({ message: "Product deleted", data });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
 app.get("/api/products/:productCode", async (req, res) => {
   try {
     const branch = normalizeBranch(req.query.branch);
@@ -453,24 +510,9 @@ app.put("/api/inventory/:productCode", async (req, res) => {
 });
 
 app.delete("/api/inventory/:productCode", async (req, res) => {
-  try {
-    const branch = normalizeBranch(req.query.branch);
-    const productCode = String(req.params.productCode || "").trim();
-    if (!branch || isCentralBranch(branch)) {
-      return res
-        .status(400)
-        .json({
-          message: "branch is required and must be HUE, SAIGON, or HANOI",
-        });
-    }
-    if (!productCode) {
-      return res.status(400).json({ message: "productCode is required" });
-    }
-    const data = await deleteInventoryItem(branch, productCode);
-    return res.json({ message: "Inventory deleted", data });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
+  return res.status(405).json({
+    message: "Delete inventory is disabled. Use product management at Central instead.",
+  });
 });
 
 app.post("/api/transfer-stock", async (req, res) => {

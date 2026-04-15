@@ -26,6 +26,7 @@
           <a href="/central-inventory.html" class="nav-link active"
             >CRUD Tồn kho</a
           >
+          <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
           <a href="/central-transfer.html" class="nav-link">Luân chuyển hang</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
@@ -51,7 +52,6 @@
               Create
             </button>
             <button class="crud-tab" data-crud-target="update">Update</button>
-            <button class="crud-tab" data-crud-target="delete">Delete</button>
           </div>
 
           <div class="crud-panel active" data-crud-panel="create">
@@ -98,27 +98,6 @@
             </form>
           </div>
 
-          <div class="crud-panel" data-crud-panel="delete">
-            <form
-              id="centralInventoryDeleteForm"
-              class="inline-form compact-top"
-            >
-              <label>
-                Chi nhánh
-                <select name="branch" required>
-                  <option value="HUE">HUE</option>
-                  <option value="SAIGON">SAIGON</option>
-                  <option value="HANOI">HANOI</option>
-                </select>
-              </label>
-              <label>
-                MaSP can xoa
-                <input name="productCode" required />
-              </label>
-              <button type="submit" class="danger">Delete Tồn kho</button>
-            </form>
-          </div>
-
           <div class="section-head compact-top">
             <h3>Du lieu ton kho theo chi nhánh</h3>
             <div class="inline-form">
@@ -135,7 +114,7 @@
               </button>
             </div>
           </div>
-          <p class="hint">Click row de tu dien form Update/Delete.</p>
+          <p class="hint">Click row de tu dien form Update.</p>
           <div class="table-wrap" id="centralInventoryTableWrap"></div>
           <pre class="result-box" id="centralInventoryResult">
 Chưa co thao tac.</pre

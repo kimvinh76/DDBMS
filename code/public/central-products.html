@@ -1,0 +1,112 @@
+﻿<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Central Quan Ly San Pham</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="central-products">
+    <main class="app-shell">
+      <aside class="sidebar sidebar-central">
+        <div class="brand-box">
+          <p class="eyebrow">DDBMS Demo</p>
+          <h2>Central Console</h2>
+        </div>
+        <nav class="side-nav">
+          <a href="/central-overview.html" class="nav-link">Tong quan</a>
+          <a href="/central-employees.html" class="nav-link">CRUD Nhan vien</a>
+          <a href="/central-invoices.html" class="nav-link">CRUD Hoa don</a>
+          <a href="/central-inventory.html" class="nav-link">CRUD Ton kho</a>
+          <a href="/central-products.html" class="nav-link active">Quan ly san pham</a>
+          <a href="/central-transfer.html" class="nav-link">Luan chuyen hang</a>
+        </nav>
+        <button class="ghost sidebar-logout" id="logoutBtn">Dang xuat</button>
+      </aside>
+
+      <section class="content-panel">
+        <header class="topbar modern-topbar">
+          <div>
+            <p class="eyebrow">Tac vu Toan cuc</p>
+            <h1>Central Quan Ly San Pham</h1>
+          </div>
+        </header>
+
+        <section class="card" id="central-product-crud">
+          <div class="section-head">
+            <h2>CRUD San pham tren he thong</h2>
+          </div>
+          <p class="api-line">/api/products, /api/products/:productCode</p>
+          <div class="crud-switch" id="centralProductCrudSwitch">
+            <button class="crud-tab active" data-crud-target="create">Create</button>
+            <button class="crud-tab" data-crud-target="update">Update</button>
+            <button class="crud-tab" data-crud-target="delete">Delete</button>
+          </div>
+
+          <div class="crud-panel active" data-crud-panel="create">
+            <form id="centralProductCreateForm" class="form-grid">
+              <label>
+                Ma SP
+                <input name="productCode" required />
+              </label>
+              <label>
+                Ten SP
+                <input name="productName" required />
+              </label>
+              <label>
+                Don gia
+                <input type="number" min="0" step="0.01" name="unitPrice" required />
+              </label>
+              <button type="submit" class="primary">Tao San pham</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="update">
+            <form id="centralProductUpdateForm" class="form-grid compact-top">
+              <label>
+                Ma SP can sua
+                <input name="productCode" required />
+              </label>
+              <label>
+                Ten SP moi
+                <input name="productName" />
+              </label>
+              <label>
+                Don gia moi
+                <input type="number" min="0" step="0.01" name="unitPrice" />
+              </label>
+              <button type="submit" class="ghost">Cap nhat SP</button>
+            </form>
+          </div>
+
+          <div class="crud-panel" data-crud-panel="delete">
+            <form id="centralProductDeleteForm" class="inline-form compact-top">
+              <label>
+                Ma SP can xoa
+                <input name="productCode" required />
+              </label>
+              <button type="submit" class="danger">Xoa San pham</button>
+            </form>
+          </div>
+
+          <div class="section-head compact-top">
+            <h3>Danh sach San pham</h3>
+            <div class="inline-form">
+              <button class="ghost" id="loadCentralProducts">Tai danh sach</button>
+            </div>
+          </div>
+          <p class="hint">Click dong de tu dien form Update/Delete.</p>
+          <div class="table-wrap" id="centralProductTableWrap"></div>
+          <pre class="result-box" id="centralProductResult">Chua co thao tac.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
