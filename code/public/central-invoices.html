@@ -25,9 +25,9 @@
           <a href="/central-invoices.html" class="nav-link active"
             >CRUD Hóa đơn</a
           >
-          <a href="/central-inventory.html" class="nav-link">CRUD Tồn kho</a>
+          <a href="/central-inventory.html" class="nav-link">Tồn kho</a>
           <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
-          <a href="/central-transfer.html" class="nav-link">Luân chuyển hang</a>
+          <a href="/central-transfer.html" class="nav-link">Luân chuyển hàng</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
       </aside>
@@ -68,27 +68,27 @@
                 <input name="employeeId" placeholder="VD: H001" />
               </label>
               <label class="invoice-meta invoice-meta-total" style="grid-column: span 2;">
-                Tong tien
+                Tổng tiền
                 <input type="number" min="0" name="totalAmount" readonly />
               </label>
               <div class="invoice-meta-action" style="grid-column: span 1;">
                 <button type="button" class="primary invoice-add-item-btn" data-add-invoice-item>
-                  Them dong san pham
+                  Thêm dòng sản phẩm
                 </button>
               </div>
               <div class="full">
                 <div class="invoice-items" data-invoice-items></div>
               </div>
               <label class="full">
-                Ghi chu
-                <input name="note" placeholder="Khuyen mai cuoi tuan..." />
+                Ghi chú
+                <input name="note" placeholder="Khuyến mãi cuối tuần..." />
               </label>
               <button type="submit" class="primary">Thêm hóa đơn</button>
             </form>
           </div>
 
           <div class="section-head compact-top">
-            <h3>Du lieu hoa don theo chi nhánh</h3>
+            <h3>Dữ liệu hóa đơn theo chi nhánh</h3>
             <div class="inline-form">
               <label>
                 Xem chi nhánh
@@ -99,15 +99,15 @@
                 </select>
               </label>
               <button class="ghost" id="loadCentralInvoices">
-                Tai danh sach
+                Tải danh sách
               </button>
             </div>
           </div>
-          <p class="hint">Danh sach du lieu (chi doc o giao dien).</p>
+          <p class="hint">Danh sách dữ liệu (chi doc o giao dien).</p>
           <div class="table-wrap" id="centralInvoicesTableWrap"></div>
 
           <pre class="result-box" id="centralInvoiceResult">
-Chưa co thao tac.</pre>
+Chưa có thao tác.</pre>
         </section>
 
      

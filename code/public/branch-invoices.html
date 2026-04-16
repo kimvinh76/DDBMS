@@ -23,6 +23,7 @@
           <a href="/branch-dashboard.html" class="nav-link">Dashboard</a>
           <a href="/branch-employees.html" class="nav-link">Nhân viên</a>
           <a href="/branch-invoices.html" class="nav-link active">Hóa đơn</a>
+          <a href="/branch-products.html" class="nav-link">Sản phẩm</a>
           <a href="/branch-inventory.html" class="nav-link">Tồn kho</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
@@ -32,7 +33,7 @@
         <header class="topbar modern-topbar">
           <div>
             <p class="eyebrow">Tác vụ Cục bộ</p>
-            <h1>Quản lý hoa don</h1>
+            <h1>Quản lý hóa đơn</h1>
           </div>
         </header>
 
@@ -50,38 +51,38 @@
           <div class="crud-panel active" data-crud-panel="create">
             <form id="invoiceCreateForm" class="form-grid invoice-create-grid">
               <label class="invoice-meta" style="grid-column: span 2;">
-                Ma nhan vien
+                Mã nhân viên
                 <input name="employeeId" placeholder="VD: H001" />
               </label>
               <label class="invoice-meta" style="grid-column: span 2;">
-                Tong tien
+                Tổng tiền
                 <input type="number" name="totalAmount" min="0" readonly />
               </label>
               <div class="invoice-meta-action">
                 <button type="button" class="primary invoice-add-item-btn" data-add-invoice-item>
-                  Them dong san pham
+                  Thêm dòng sản phẩm
                 </button>
               </div>
               <div class="full">
                 <div class="invoice-items" data-invoice-items></div>
               </div>
               <label class="full">
-                Ghi chu
-                <input name="note" placeholder="Khuyen mai cuoi tuan..." />
+                Ghi chú
+                <input name="note" placeholder="Khuyến mãi cuối tuần..." />
               </label>
-              <button type="submit" class="primary">Thêm hoa don</button>
+              <button type="submit" class="primary">Thêm hóa đơn</button>
             </form>
           </div>
 
           <div class="section-head compact-top">
             <p class="hint">
-              Danh sach du lieu (luon hien thi).
+              Danh sách dữ liệu (luôn hiển thị).
             </p>
-            <button class="ghost" id="reloadInvoices">Tai danh sach</button>
+            <button class="ghost" id="reloadInvoices">Tải danh sách</button>
           </div>
           <div class="table-wrap" id="invoicesTableWrap"></div>
 
-          <pre class="result-box" id="invoiceResult">Chưa co thao tac.</pre>
+          <pre class="result-box" id="invoiceResult">Chưa có thao tác.</pre>
         </section>
 
         

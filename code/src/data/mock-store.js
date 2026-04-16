@@ -454,6 +454,14 @@ function createProduct(payload) {
     TenHang: String(payload.productName || code).trim(),
     Gia: Number(payload.unitPrice || 0),
   };
+
+  for (const branch of ["HUE", "SAIGON", "HANOI"]) {
+    const bucket = inventory[branch] || (inventory[branch] = {});
+    if (bucket[code] === undefined) {
+      bucket[code] = 0;
+    }
+  }
+
   return getProductByCode("CENTRAL", code);
 }
 

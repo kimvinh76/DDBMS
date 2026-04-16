@@ -769,6 +769,14 @@ async function createProduct(payload) {
   if (isMockMode()) {
     return mock.createProduct(payload);
   }
+
+  const linked = linkedServerNames();
+  const branchTargets = [
+    { code: "HUE", server: linked.HUE, db: dbNameByBranch("HUE") },
+    { code: "SAIGON", server: linked.SAIGON, db: dbNameByBranch("SAIGON") },
+    { code: "HANOI", server: linked.HANOI, db: dbNameByBranch("HANOI") },
+  ];
+
   const pool = await getPool("CENTRAL");
   const code = String(payload.productCode || "").trim();
   const name = String(payload.productName || code).trim();
@@ -788,6 +796,32 @@ async function createProduct(payload) {
           THROW 50000, 'Product already exists', 1;
       END
     `);
+
+  for (const target of branchTargets) {
+    await pool.request()
+      .input("MaSP", sql.VarChar(50), code)
+      .input("TenHang", sql.NVarChar(100), name)
+      .input("Gia", sql.Decimal(10, 2), price)
+      .input("ChiNhanh", sql.VarChar(10), target.code)
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM [${target.server}].[${target.db}].dbo.HangHoa WHERE MaSP = @MaSP)
+        BEGIN
+          INSERT INTO [${target.server}].[${target.db}].dbo.HangHoa (MaSP, TenHang, Gia)
+          VALUES (@MaSP, @TenHang, @Gia);
+        END
+
+        IF NOT EXISTS (
+          SELECT 1
+          FROM [${target.server}].[${target.db}].dbo.TonKho
+          WHERE MaSP = @MaSP AND ChiNhanh = @ChiNhanh
+        )
+        BEGIN
+          INSERT INTO [${target.server}].[${target.db}].dbo.TonKho (MaSP, SoLuongTon, ChiNhanh)
+          VALUES (@MaSP, 0, @ChiNhanh);
+        END
+      `);
+  }
+
   return { productCode: code, productName: name, unitPrice: price };
 }
 

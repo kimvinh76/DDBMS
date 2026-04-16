@@ -26,9 +26,7 @@ const {
   updateProduct,
   deleteProduct,
   getProductByCode,
-  createInventoryItem,
   updateInventoryItem,
-  deleteInventoryItem,
   getBranchDashboard,
 } = require("./src/services/store-service");
 
@@ -396,6 +394,10 @@ app.get("/api/products", async (req, res) => {
 
 app.post("/api/products", async (req, res) => {
   try {
+    const branch = normalizeBranch(req.body.branch || req.query.branch);
+    if (!branch || !isCentralBranch(branch)) {
+      return res.status(403).json({ message: "Only CENTRAL can create products" });
+    }
     const payload = {
       productCode: req.body.productCode,
       productName: req.body.productName,
@@ -413,6 +415,10 @@ app.post("/api/products", async (req, res) => {
 
 app.put("/api/products/:productCode", async (req, res) => {
   try {
+    const branch = normalizeBranch(req.body.branch || req.query.branch);
+    if (!branch || !isCentralBranch(branch)) {
+      return res.status(403).json({ message: "Only CENTRAL can update products" });
+    }
     const code = req.params.productCode;
     const payload = {
       productName: req.body.productName,
@@ -427,6 +433,10 @@ app.put("/api/products/:productCode", async (req, res) => {
 
 app.delete("/api/products/:productCode", async (req, res) => {
   try {
+    const branch = normalizeBranch(req.body.branch || req.query.branch);
+    if (!branch || !isCentralBranch(branch)) {
+      return res.status(403).json({ message: "Only CENTRAL can delete products" });
+    }
     const code = req.params.productCode;
     const data = await deleteProduct(code);
     return res.json({ message: "Product deleted", data });
@@ -460,29 +470,10 @@ app.get("/api/products/:productCode", async (req, res) => {
 });
 
 app.post("/api/inventory", async (req, res) => {
-  try {
-    const branch = normalizeBranch(req.body.branch);
-    const payload = {
-      productCode: String(req.body.productCode || "").trim(),
-      quantity: Number(req.body.quantity || 0),
-    };
-    if (!branch || isCentralBranch(branch)) {
-      return res
-        .status(400)
-        .json({
-          message: "branch is required and must be HUE, SAIGON, or HANOI",
-        });
-    }
-    if (!payload.productCode || payload.quantity < 0) {
-      return res
-        .status(400)
-        .json({ message: "productCode is required and quantity must be >= 0" });
-    }
-    const data = await createInventoryItem(branch, payload);
-    return res.status(201).json({ message: "Inventory item created", data });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
+  return res.status(405).json({
+    message:
+      "Create inventory is disabled. Inventory rows are auto-created with quantity 0 when product is created at Central.",
+  });
 });
 
 app.put("/api/inventory/:productCode", async (req, res) => {

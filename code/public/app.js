@@ -1,7 +1,7 @@
 ﻿const BRANCH_LABELS = {
-  HUE: "Chi nhánh Hue (Port 1401)",
-  SAIGON: "Chi nhánh Sai Gon (Port 1402)",
-  HANOI: "Chi nhánh Ha Noi (Port 1403)",
+  HUE: "Chi nhánh Huế (Port 1401)",
+  SAIGON: "Chi nhánh Sài Gòn (Port 1402)",
+  HANOI: "Chi nhánh Hà Nội (Port 1403)",
   CENTRAL: "Tổng công ty (Port 1404)",
 };
 
@@ -140,7 +140,7 @@ function formatTableCellValue(columnName, value) {
 
 function renderTable(wrapper, rows, options = {}) {
   if (!rows || rows.length === 0) {
-    wrapper.innerHTML = `<p class="subtitle">${options.emptyMessage || "Không co du lieu."}</p>`;
+    wrapper.innerHTML = `<p class="subtitle">${options.emptyMessage || "Không có dữ liệu."}</p>`;
     return;
   }
 
@@ -240,23 +240,23 @@ function attachInvoiceLineItems(form, resolveBranch, resultBox) {
   const padRowHtml = () => `
     <div class="invoice-item-row compact-top" data-invoice-item-row>
       <label class="invoice-item-field">
-        Ma san pham
+        Mã sản phẩm
         <input name="itemProductCode" placeholder="VD: MI_GOI" required />
       </label>
       <label class="invoice-item-field">
-        Ten hang
-        <input name="itemProductName" placeholder="Tu dong theo MaSP" readonly />
+        Tên hàng
+        <input name="itemProductName" placeholder="Tự động theo MaSP" readonly />
       </label>
       <label class="invoice-item-field">
-        Don gia
+        Đơn giá
         <input type="number" name="itemUnitPrice" min="0" />
       </label>
       <label class="invoice-item-field">
-        So luong
+        Số lượng
         <input type="number" name="itemQuantity" min="1" required />
       </label>
       <div class="invoice-item-actions">
-        <button type="button" class="danger" data-remove-invoice-item>Xoa dong</button>
+        <button type="button" class="danger" data-remove-invoice-item>Xóa dòng</button>
       </div>
     </div>
   `;
@@ -314,8 +314,19 @@ function attachInvoiceLineItems(form, resolveBranch, resultBox) {
     const priceInput = row.querySelector('[name="itemUnitPrice"]');
     const qtyInput = row.querySelector('[name="itemQuantity"]');
     const removeBtn = row.querySelector("[data-remove-invoice-item]");
+    let lookupTimer = null;
 
     if (codeInput) {
+      const lookupWithDebounce = () => {
+        if (lookupTimer) {
+          clearTimeout(lookupTimer);
+        }
+        lookupTimer = setTimeout(() => {
+          fillRowProduct(row).catch(() => {});
+        }, 250);
+      };
+
+      codeInput.addEventListener("input", lookupWithDebounce);
       codeInput.addEventListener("blur", () => {
         fillRowProduct(row).catch(() => {});
       });
@@ -438,8 +449,8 @@ function renderStatsGrid(wrapper, stats) {
     { label: "Nhân viên", value: stats.employeeCount },
     { label: "Hóa đơn", value: stats.invoiceCount },
     { label: "Doanh thu", value: `${formatNumber(stats.revenue)} VND` },
-    { label: "Tong ton kho", value: formatNumber(stats.totalStockUnits) },
-    { label: "San pham sap het", value: formatNumber(stats.lowStockProducts) },
+    { label: "Tổng tồn kho", value: formatNumber(stats.totalStockUnits) },
+    { label: "Sản phẩm sắp hết", value: formatNumber(stats.lowStockProducts) },
   ];
   wrapper.innerHTML = cards
     .map(
@@ -535,7 +546,7 @@ async function setupBranchDashboardPage() {
         labels: sortedInventory.map((item) => item.productCode),
         datasets: [
           {
-            label: "So luong ton",
+            label: "Số lượng tồn",
             data: sortedInventory.map((item) => Number(item.quantity || 0)),
             backgroundColor: [
               "#0c8d8a",
@@ -598,11 +609,11 @@ async function setupBranchEmployeesPage() {
 
   async function loadEmployees() {
     employeesTableWrap.innerHTML =
-      '<p class="subtitle">Đang tải du lieu...</p>';
+      '<p class="subtitle">Đang tải dữ liệu...</p>';
     const result = await fetchJSON(`/api/employees?branch=${branch}`);
     renderTable(employeesTableWrap, hideColumns(result.data, ["rowguid", "rowid"]), {
       tableId: "employees",
-      emptyMessage: "Chưa co nhan vien nao trong chi nhánh.",
+      emptyMessage: "Chưa có nhân viên nào trong chi nhánh.",
       onRowSelect: (row) => {
         employeeUpdateForm.elements.employeeId.value = row.MaNV || "";
         employeeDeleteForm.elements.employeeId.value = row.MaNV || "";
@@ -737,12 +748,12 @@ async function setupBranchInvoicesPage() {
   invoicesApiLine.textContent = `GET /api/invoices?branch=${branch}`;
 
   async function loadInvoices() {
-    invoicesTableWrap.innerHTML = '<p class="subtitle">Đang tải hoa don...</p>';
+    invoicesTableWrap.innerHTML = '<p class="subtitle">Đang tải hóa đơn...</p>';
     
     const result = await fetchJSON(`/api/invoices?branch=${branch}`);
     renderTable(invoicesTableWrap, result.data, {
       tableId: "invoices",
-      emptyMessage: "Chưa co hoa don nao trong chi nhánh.",
+      emptyMessage: "Chưa có hóa đơn nào trong chi nhánh.",
       onRowSelect: async (row) => {
         if (!row.MaHD) return;
         if (invoiceDetailsModal) {
@@ -819,15 +830,35 @@ async function setupBranchInventoryPage() {
   const inventoryResult = document.getElementById("inventoryResult");
   const inventoryUpdateForm = document.getElementById("inventoryUpdateForm");
 
-  inventoryApiLine.textContent = `GET /api/inventory?branch=${branch}`;
+  inventoryApiLine.textContent = `GET /api/inventory?branch=${branch}, PUT /api/inventory/:productCode?branch=${branch}`;
 
   async function loadInventory() {
     inventoryTableWrap.innerHTML =
-      '<p class="subtitle">Đang tải ton kho...</p>';
-    const result = await fetchJSON(`/api/inventory?branch=${branch}`);
-    renderTable(inventoryTableWrap, result, {
+      '<p class="subtitle">Đang tải tồn kho...</p>';
+    const [result, products] = await Promise.all([
+      fetchJSON(`/api/inventory?branch=${branch}`),
+      fetchJSON("/api/products"),
+    ]);
+    const productMap = new Map(
+      (Array.isArray(products) ? products : []).map((item) => [
+        item.productCode,
+        item,
+      ]),
+    );
+    const inventoryRows = (Array.isArray(result) ? result : []).map((row) => {
+      const product = productMap.get(row.productCode) || {};
+      return {
+        productCode: row.productCode,
+        productName: product.productName || "",
+        unitPrice: product.unitPrice ?? "",
+        quantity: row.quantity,
+        branch: row.branch,
+      };
+    });
+
+    renderTable(inventoryTableWrap, inventoryRows, {
       tableId: "inventory",
-      emptyMessage: "Chưa co san pham ton kho nao.",
+      emptyMessage: "Chưa có sản phẩm tồn kho nào.",
       onRowSelect: (row) => {
         inventoryUpdateForm.elements.productCode.value = row.productCode || "";
         inventoryUpdateForm.elements.quantity.value = row.quantity || "";
@@ -840,30 +871,6 @@ async function setupBranchInventoryPage() {
       inventoryTableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
     });
   });
-
-  document
-    .getElementById("inventoryCreateForm")
-    .addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const form = new FormData(event.target);
-      const payload = {
-        branch,
-        productCode: form.get("productCode"),
-        quantity: Number(form.get("quantity") || 0),
-      };
-      try {
-        const result = await fetchJSON("/api/inventory", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        inventoryResult.textContent = JSON.stringify(result, null, 2);
-        event.target.reset();
-        await loadInventory();
-      } catch (error) {
-        inventoryResult.textContent = `Lỗi: ${error.message}`;
-      }
-    });
 
   inventoryUpdateForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -889,6 +896,44 @@ async function setupBranchInventoryPage() {
   await loadInventory();
 }
 
+async function setupBranchProductsPage() {
+  const branch = ensureLocalBranch();
+  if (!branch) {
+    return;
+  }
+  setupBranchShell(branch);
+
+  const apiLine = document.getElementById("branchProductsApiLine");
+  const tableWrap = document.getElementById("branchProductsTableWrap");
+  const reloadBtn = document.getElementById("reloadBranchProducts");
+
+  apiLine.textContent = "GET /api/products";
+
+  async function loadBranchProducts() {
+    tableWrap.innerHTML =
+      '<p class="subtitle">Đang tải danh sách sản phẩm...</p>';
+    const products = await fetchJSON("/api/products");
+    const rows = (Array.isArray(products) ? products : []).map((item) => ({
+      productCode: item.productCode,
+      productName: item.productName,
+      unitPrice: item.unitPrice,
+    }));
+
+    renderTable(tableWrap, rows, {
+      tableId: "branch-products",
+      emptyMessage: "Chưa có sản phẩm.",
+    });
+  }
+
+  reloadBtn.addEventListener("click", () => {
+    loadBranchProducts().catch((error) => {
+      tableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
+    });
+  });
+
+  await loadBranchProducts();
+}
+
 async function setupCentralOverviewPage() {
   if (!ensureCentralBranch()) {
     return;
@@ -911,17 +956,17 @@ async function setupCentralOverviewPage() {
 
     const cards = [
       {
-        label: "Tong doanh thu",
+        label: "Tổng doanh thu",
         value: `${formatNumber(result.nationalRevenue)} VND`,
       },
-      { label: "So chi nhánh", value: byBranch.length },
+      { label: "Số chi nhánh", value: byBranch.length },
       {
-        label: "Chi nhánh dan dau",
+        label: "Chi nhánh dẫn đầu",
         value: best
           ? `${best.branch} (${formatNumber(best.revenue)} VND)`
           : "N/A",
       },
-      { label: "Che do", value: result.mode || "N/A" },
+      { label: "Chế độ", value: result.mode || "N/A" },
       {
         label: "Cập nhật",
         value: new Date(result.generatedAt).toLocaleString("vi-VN"),
@@ -1011,11 +1056,11 @@ async function setupCentralEmployeesPage() {
 
   async function loadEmployees() {
     const branch = readBranch.value;
-    tableWrap.innerHTML = '<p class="subtitle">Đang tải nhan vien...</p>';
+    tableWrap.innerHTML = '<p class="subtitle">Đang tải nhân viên...</p>';
     const result = await fetchJSON(`/api/employees?branch=${branch}`);
     renderTable(tableWrap, hideColumns(result.data, ["rowguid", "rowid"]), {
       tableId: "central-local-employees",
-      emptyMessage: "Chưa co nhan vien nao o chi nhánh nay.",
+      emptyMessage: "Chưa có nhân viên nào ở chi nhánh này.",
       onRowSelect: (row) => {
         syncFormsBranch(row.ChiNhanh || branch);
         updateForm.elements.employeeId.value = row.MaNV || "";
@@ -1177,12 +1222,12 @@ async function setupCentralInvoicesPage() {
 
   async function loadInvoices() {
     const branch = readBranch.value;
-    tableWrap.innerHTML = '<p class="subtitle">Đang tải hoa don...</p>';
+    tableWrap.innerHTML = '<p class="subtitle">Đang tải hóa đơn...</p>';
 
     const result = await fetchJSON(`/api/invoices?branch=${branch}`);
     renderTable(tableWrap, result.data, {
       tableId: "central-local-invoices",
-      emptyMessage: "Chưa co hoa don nao o chi nhánh nay.",
+      emptyMessage: "Chưa có hóa đơn nào ở chi nhánh này.",
       onRowSelect: async (row) => {
         if (!row.MaHD) return;
         if (centralInvoiceDetailsModal) {
@@ -1268,21 +1313,39 @@ async function setupCentralInventoryPage() {
   const tableWrap = document.getElementById("centralInventoryTableWrap");
   const resultBox = document.getElementById("centralInventoryResult");
   const readBranch = document.getElementById("centralInventoryReadBranch");
-  const createForm = document.getElementById("centralInventoryCreateForm");
   const updateForm = document.getElementById("centralInventoryUpdateForm");
 
   function syncFormsBranch(branch) {
-    createForm.elements.branch.value = branch;
     updateForm.elements.branch.value = branch;
   }
 
   async function loadInventory() {
     const branch = readBranch.value;
-    tableWrap.innerHTML = '<p class="subtitle">Đang tải ton kho...</p>';
-    const result = await fetchJSON(`/api/inventory?branch=${branch}`);
-    renderTable(tableWrap, result, {
+    tableWrap.innerHTML = '<p class="subtitle">Đang tải tồn kho...</p>';
+    const [result, products] = await Promise.all([
+      fetchJSON(`/api/inventory?branch=${branch}`),
+      fetchJSON("/api/products"),
+    ]);
+    const productMap = new Map(
+      (Array.isArray(products) ? products : []).map((item) => [
+        item.productCode,
+        item,
+      ]),
+    );
+    const inventoryRows = (Array.isArray(result) ? result : []).map((row) => {
+      const product = productMap.get(row.productCode) || {};
+      return {
+        productCode: row.productCode,
+        productName: product.productName || "",
+        unitPrice: product.unitPrice ?? "",
+        quantity: row.quantity,
+        branch: row.branch,
+      };
+    });
+
+    renderTable(tableWrap, inventoryRows, {
       tableId: "central-local-inventory",
-      emptyMessage: "Chưa co san pham ton kho o chi nhánh nay.",
+      emptyMessage: "Chưa có sản phẩm tồn kho ở chi nhánh này.",
       onRowSelect: (row) => {
         syncFormsBranch(row.branch || branch);
         updateForm.elements.productCode.value = row.productCode || "";
@@ -1306,30 +1369,6 @@ async function setupCentralInventoryPage() {
         tableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
       });
     });
-
-  createForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(createForm);
-    const payload = {
-      branch: form.get("branch"),
-      productCode: form.get("productCode"),
-      quantity: Number(form.get("quantity") || 0),
-    };
-    try {
-      const result = await fetchJSON("/api/inventory", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      resultBox.textContent = JSON.stringify(result, null, 2);
-      createForm.reset();
-      readBranch.value = payload.branch;
-      syncFormsBranch(payload.branch);
-      await loadInventory();
-    } catch (error) {
-      resultBox.textContent = `Lỗi: ${error.message}`;
-    }
-  });
 
   updateForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1398,6 +1437,7 @@ async function setupCentralProductsPage() {
     event.preventDefault();
     const form = new FormData(createForm);
     const payload = {
+      branch: "CENTRAL",
       productCode: String(form.get("productCode") || "").trim(),
       productName: String(form.get("productName") || "").trim(),
       unitPrice: Number(form.get("unitPrice") || 0),
@@ -1421,11 +1461,12 @@ async function setupCentralProductsPage() {
     const form = new FormData(updateForm);
     const productCode = String(form.get("productCode") || "").trim();
     const payload = {
+      branch: "CENTRAL",
       productName: form.get("productName"),
       unitPrice: form.get("unitPrice") === "" ? undefined : Number(form.get("unitPrice")),
     };
     try {
-      const result = await fetchJSON(`/api/products/${encodeURIComponent(productCode)}`, {
+      const result = await fetchJSON(`/api/products/${encodeURIComponent(productCode)}?branch=CENTRAL`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1442,7 +1483,7 @@ async function setupCentralProductsPage() {
     const form = new FormData(deleteForm);
     const productCode = String(form.get("productCode") || "").trim();
     try {
-      const result = await fetchJSON(`/api/products/${encodeURIComponent(productCode)}`, {
+      const result = await fetchJSON(`/api/products/${encodeURIComponent(productCode)}?branch=CENTRAL`, {
         method: "DELETE",
       });
       resultBox.textContent = JSON.stringify(result, null, 2);
@@ -1544,6 +1585,11 @@ async function setupCentralTransferPage() {
       return;
     }
 
+    if (page === "branch-products") {
+      await setupBranchProductsPage();
+      return;
+    }
+
     if (page === "central-overview") {
       await setupCentralOverviewPage();
       return;
@@ -1575,7 +1621,7 @@ async function setupCentralTransferPage() {
     }
   } catch (error) {
     console.error(error);
-    alert(`Lỗi khoi tao giao dien: ${error.message}`);
+    alert(`Lỗi khởi tạo giao diện: ${error.message}`);
   }
 })();
 

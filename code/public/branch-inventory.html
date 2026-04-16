@@ -23,6 +23,7 @@
           <a href="/branch-dashboard.html" class="nav-link">Dashboard</a>
           <a href="/branch-employees.html" class="nav-link">Nhân viên</a>
           <a href="/branch-invoices.html" class="nav-link">Hóa đơn</a>
+          <a href="/branch-products.html" class="nav-link">Sản phẩm</a>
           <a href="/branch-inventory.html" class="nav-link active">Tồn kho</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
@@ -32,60 +33,43 @@
         <header class="topbar modern-topbar">
           <div>
             <p class="eyebrow">Tác vụ Cục bộ</p>
-            <h1>Quản lý ton kho</h1>
+            <h1>Quản lý tồn kho</h1>
           </div>
         </header>
 
         <section class="card" id="inventory">
           <div class="section-head">
-            <h2>CRUD Tồn kho</h2>
+            <h2>Cập nhật Tồn kho</h2>
           </div>
           <p class="api-line" id="inventoryApiLine"></p>
           <div class="crud-switch" id="inventoryCrudSwitch">
-            <button class="crud-tab active" data-crud-target="create">
-              Create
-            </button>
-            <button class="crud-tab" data-crud-target="update">Update</button>
+            <button class="crud-tab active" data-crud-target="update">Update</button>
           </div>
 
-          <div class="crud-panel active" data-crud-panel="create">
-            <form id="inventoryCreateForm" class="form-grid">
-              <label>
-                MaSP
-                <input name="productCode" required />
-              </label>
-              <label>
-                So luong ton
-                <input type="number" name="quantity" min="0" required />
-              </label>
-              <button type="submit" class="primary">Thêm san pham kho</button>
-            </form>
-          </div>
-
-          <div class="crud-panel" data-crud-panel="update">
+          <div class="crud-panel active" data-crud-panel="update">
             <form id="inventoryUpdateForm" class="form-grid compact-top">
               <label>
-                MaSP can sua
+                MaSP cần sửa
                 <input name="productCode" required />
               </label>
               <label>
-                So luong ton moi
+                Số lượng tồn mới
                 <input type="number" name="quantity" min="0" required />
               </label>
-              <button type="submit" class="ghost">Cập nhật ton kho</button>
+              <button type="submit" class="ghost">Cập nhật tồn kho</button>
             </form>
           </div>
 
           <div class="section-head compact-top">
             <p class="hint">
-              Danh sach du lieu (luon hien thi) - click row de dien nhanh form
-              Update.
+              Danh sách dữ liệu (luôn hiển thị) - click row để điền nhanh form
+              Cập nhật.
             </p>
-            <button class="ghost" id="reloadInventory">Tai danh sach</button>
+            <button class="ghost" id="reloadInventory">Tải danh sách</button>
           </div>
           <div class="table-wrap" id="inventoryTableWrap"></div>
 
-          <pre class="result-box" id="inventoryResult">Chưa co thao tac.</pre>
+          <pre class="result-box" id="inventoryResult">Chưa có thao tác.</pre>
         </section>
       </section>
     </main>

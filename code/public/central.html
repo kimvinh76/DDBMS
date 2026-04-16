@@ -23,7 +23,8 @@
           <a href="#national-overview" class="nav-link">Tổng quan</a>
           <a href="#all-employees" class="nav-link">Nhân viên toàn quốc</a>
           <a href="#national-revenue" class="nav-link">Doanh thu toàn quốc</a>
-          <a href="#stock-transfer" class="nav-link">Luân chuyển hang</a>
+          <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
+          <a href="#stock-transfer" class="nav-link">Luân chuyển hàng</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
       </aside>
@@ -39,7 +40,7 @@
         <section class="card" id="national-overview">
           <div class="section-head">
             <h2>Tổng quan toàn quốc</h2>
-            <button class="ghost" id="loadRevenue">Tai bao cao</button>
+            <button class="ghost" id="loadRevenue">Tải báo cáo</button>
           </div>
           <p class="api-line">GET /api/revenue/national?branch=CENTRAL</p>
           <div class="stats-grid" id="centralStatsGrid"></div>
@@ -47,12 +48,12 @@
 
         <section class="card" id="all-employees">
           <div class="section-head">
-            <h2>Danh sach Toan bo Nhân viên</h2>
+            <h2>Danh sách Toàn bộ Nhân viên</h2>
             <button class="ghost" id="loadAllEmployees">
-              Lay du lieu tu Central
+              Lấy dữ liệu từ Central
             </button>
           </div>
-          <p class="hint">Co the click row de highlight va doi chieu nhanh.</p>
+          <p class="hint">Có thể click row để highlight và đối chiếu nhanh.</p>
           <p class="api-line">GET /api/all-employees?branch=CENTRAL</p>
           <div class="table-wrap" id="allEmployeesTableWrap"></div>
         </section>
@@ -61,11 +62,11 @@
           <div class="section-head">
             <h2>Chi tiết doanh thu toàn quốc</h2>
           </div>
-          <pre class="result-box" id="revenueResult">Chưa tai du lieu.</pre>
+          <pre class="result-box" id="revenueResult">Chưa tải dữ liệu.</pre>
         </section>
 
         <section class="card" id="stock-transfer">
-          <h2>Luân chuyển hang hoa (Distributed Transaction)</h2>
+          <h2>Luân chuyển hàng hóa (Distributed Transaction)</h2>
           <p class="api-line">
             POST /api/transfer-stock + BEGIN DISTRIBUTED TRANSACTION
           </p>
@@ -87,11 +88,11 @@
               </select>
             </label>
             <label>
-              Ma san pham
+              Mã sản phẩm
               <input name="productCode" value="MI_GOI" required />
             </label>
             <label>
-              So luong
+              Số lượng
               <input
                 type="number"
                 min="1"
@@ -100,9 +101,9 @@
                 required
               />
             </label>
-            <button type="submit" class="primary">Thuc thi giao dich</button>
+            <button type="submit" class="primary">Thực thi giao dịch</button>
           </form>
-          <pre class="result-box" id="transferResult">Chưa co thao tac.</pre>
+          <pre class="result-box" id="transferResult">Chưa có thao tác.</pre>
         </section>
       </section>
     </main>

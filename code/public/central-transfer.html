@@ -23,10 +23,10 @@
           <a href="/central-overview.html" class="nav-link">Tổng quan</a>
           <a href="/central-employees.html" class="nav-link">CRUD Nhân viên</a>
           <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
-          <a href="/central-inventory.html" class="nav-link">CRUD Tồn kho</a>
+          <a href="/central-inventory.html" class="nav-link">Tồn kho</a>
           <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
           <a href="/central-transfer.html" class="nav-link active"
-            >Luân chuyển hang</a
+            >Luân chuyển hàng</a
           >
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
@@ -36,7 +36,7 @@
         <header class="topbar modern-topbar">
           <div>
             <p class="eyebrow">Tác vụ Toàn cục</p>
-            <h1>Luân chuyển hang hoa</h1>
+            <h1>Luân chuyển hàng hóa</h1>
           </div>
         </header>
 
@@ -63,11 +63,11 @@
               </select>
             </label>
             <label>
-              Ma san pham
+              Mã sản phẩm
               <input name="productCode" value="MI_GOI" required />
             </label>
             <label>
-              So luong
+              Số lượng
               <input
                 type="number"
                 min="1"
@@ -76,9 +76,9 @@
                 required
               />
             </label>
-            <button type="submit" class="primary">Thuc thi giao dich</button>
+            <button type="submit" class="primary">Thực thi giao dịch</button>
           </form>
-          <pre class="result-box" id="transferResult">Chưa co thao tac.</pre>
+          <pre class="result-box" id="transferResult">Chưa có thao tác.</pre>
         </section>
       </section>
     </main>

@@ -23,9 +23,9 @@
           <a href="/central-overview.html" class="nav-link active">Tổng quan</a>
           <a href="/central-employees.html" class="nav-link">CRUD Nhân viên</a>
           <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
-          <a href="/central-inventory.html" class="nav-link">CRUD Tồn kho</a>
+          <a href="/central-inventory.html" class="nav-link">Tồn kho</a>
           <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
-          <a href="/central-transfer.html" class="nav-link">Luân chuyển hang</a>
+          <a href="/central-transfer.html" class="nav-link">Luân chuyển hàng</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
       </aside>
@@ -40,8 +40,8 @@
 
         <section class="card" id="national-overview">
           <div class="section-head">
-            <h2>Dashboard tong quan</h2>
-            <button class="ghost" id="loadRevenue">Tai bao cao</button>
+            <h2>Dashboard tổng quan</h2>
+            <button class="ghost" id="loadRevenue">Tải báo cáo</button>
           </div>
           <p class="api-line">GET /api/revenue/national?branch=CENTRAL</p>
           <div class="stats-grid" id="centralStatsGrid"></div>
@@ -61,7 +61,7 @@
             <h3>Nhận xét nhanh</h3>
           </div>
           <pre class="result-box" id="centralInsightResult">
-Đang chờ du lieu...</pre
+Đang chờ dữ liệu...</pre
           >
         </section>
 
@@ -69,7 +69,7 @@
           <div class="section-head">
             <h2>Chi tiết doanh thu</h2>
           </div>
-          <pre class="result-box" id="revenueResult">Chưa tai du lieu.</pre>
+          <pre class="result-box" id="revenueResult">Chưa tải dữ liệu.</pre>
         </section>
       </section>
     </main>

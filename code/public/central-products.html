@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Central Quan Ly San Pham</title>
+    <title>Central Quản Lý Sản Phẩm</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -20,27 +20,27 @@
           <h2>Central Console</h2>
         </div>
         <nav class="side-nav">
-          <a href="/central-overview.html" class="nav-link">Tong quan</a>
-          <a href="/central-employees.html" class="nav-link">CRUD Nhan vien</a>
-          <a href="/central-invoices.html" class="nav-link">CRUD Hoa don</a>
-          <a href="/central-inventory.html" class="nav-link">CRUD Ton kho</a>
-          <a href="/central-products.html" class="nav-link active">Quan ly san pham</a>
-          <a href="/central-transfer.html" class="nav-link">Luan chuyen hang</a>
+          <a href="/central-overview.html" class="nav-link">Tổng quan</a>
+          <a href="/central-employees.html" class="nav-link">CRUD Nhân viên</a>
+          <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
+          <a href="/central-inventory.html" class="nav-link">Tồn kho</a>
+          <a href="/central-products.html" class="nav-link active">Quản lý sản phẩm</a>
+          <a href="/central-transfer.html" class="nav-link">Luân chuyển hàng</a>
         </nav>
-        <button class="ghost sidebar-logout" id="logoutBtn">Dang xuat</button>
+        <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
       </aside>
 
       <section class="content-panel">
         <header class="topbar modern-topbar">
           <div>
-            <p class="eyebrow">Tac vu Toan cuc</p>
-            <h1>Central Quan Ly San Pham</h1>
+            <p class="eyebrow">Tác vụ Toàn cục</p>
+            <h1>Central Quản Lý Sản Phẩm</h1>
           </div>
         </header>
 
         <section class="card" id="central-product-crud">
           <div class="section-head">
-            <h2>CRUD San pham tren he thong</h2>
+            <h2>CRUD Sản phẩm trên hệ thống</h2>
           </div>
           <p class="api-line">/api/products, /api/products/:productCode</p>
           <div class="crud-switch" id="centralProductCrudSwitch">
@@ -52,58 +52,58 @@
           <div class="crud-panel active" data-crud-panel="create">
             <form id="centralProductCreateForm" class="form-grid">
               <label>
-                Ma SP
+                Mã SP
                 <input name="productCode" required />
               </label>
               <label>
-                Ten SP
+                Tên SP
                 <input name="productName" required />
               </label>
               <label>
-                Don gia
+                Đơn giá
                 <input type="number" min="0" step="0.01" name="unitPrice" required />
               </label>
-              <button type="submit" class="primary">Tao San pham</button>
+              <button type="submit" class="primary">Tạo Sản phẩm</button>
             </form>
           </div>
 
           <div class="crud-panel" data-crud-panel="update">
             <form id="centralProductUpdateForm" class="form-grid compact-top">
               <label>
-                Ma SP can sua
+                Mã SP cần sửa
                 <input name="productCode" required />
               </label>
               <label>
-                Ten SP moi
+                Tên SP mới
                 <input name="productName" />
               </label>
               <label>
-                Don gia moi
+                Đơn giá mới
                 <input type="number" min="0" step="0.01" name="unitPrice" />
               </label>
-              <button type="submit" class="ghost">Cap nhat SP</button>
+              <button type="submit" class="ghost">Cập nhật SP</button>
             </form>
           </div>
 
           <div class="crud-panel" data-crud-panel="delete">
             <form id="centralProductDeleteForm" class="inline-form compact-top">
               <label>
-                Ma SP can xoa
+                Mã SP cần xóa
                 <input name="productCode" required />
               </label>
-              <button type="submit" class="danger">Xoa San pham</button>
+              <button type="submit" class="danger">Xóa Sản phẩm</button>
             </form>
           </div>
 
           <div class="section-head compact-top">
-            <h3>Danh sach San pham</h3>
+            <h3>Danh sách Sản phẩm</h3>
             <div class="inline-form">
-              <button class="ghost" id="loadCentralProducts">Tai danh sach</button>
+              <button class="ghost" id="loadCentralProducts">Tải danh sách</button>
             </div>
           </div>
-          <p class="hint">Click dong de tu dien form Update/Delete.</p>
+          <p class="hint">Click dòng để tự điền form Update/Delete.</p>
           <div class="table-wrap" id="centralProductTableWrap"></div>
-          <pre class="result-box" id="centralProductResult">Chua co thao tac.</pre>
+          <pre class="result-box" id="centralProductResult">Chưa có thao tác.</pre>
         </section>
       </section>
     </main>

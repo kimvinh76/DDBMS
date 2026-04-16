@@ -23,6 +23,7 @@
           <a href="/branch-dashboard.html" class="nav-link">Dashboard</a>
           <a href="/branch-employees.html" class="nav-link active">Nhân viên</a>
           <a href="/branch-invoices.html" class="nav-link">Hóa đơn</a>
+          <a href="/branch-products.html" class="nav-link">Sản phẩm</a>
           <a href="/branch-inventory.html" class="nav-link">Tồn kho</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
@@ -32,7 +33,7 @@
         <header class="topbar modern-topbar">
           <div>
             <p class="eyebrow">Tác vụ Cục bộ</p>
-            <h1>Quản lý nhan vien</h1>
+            <h1>Quản lý nhân viên</h1>
           </div>
         </header>
 
@@ -52,7 +53,7 @@
           <div class="crud-panel active" data-crud-panel="create">
             <form id="employeeCreateForm" class="form-grid" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
               <label>
-                MaNV (tuy chon)
+                MaNV (tùy chọn)
                 <input name="MaNV" placeholder="VD: H003" />
               </label>
               <label>
@@ -60,51 +61,51 @@
                 <input name="HoTen" required />
               </label>
               <label>
-                Chuc vu
+                Chức vụ
                 <input name="ChucVu" required />
               </label>
-              <button type="submit" class="primary">Thêm nhan vien</button>
+              <button type="submit" class="primary">Thêm nhân viên</button>
             </form>
           </div>
 
           <div class="crud-panel" data-crud-panel="update">
             <form id="employeeUpdateForm" class="form-grid compact-top" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
               <label>
-                MaNV can sua
+                MaNV cần sửa
                 <input name="employeeId" required />
               </label>
               <label>
-                Họ tên moi
+                Họ tên mới
                 <input name="HoTen" />
               </label>
               <label>
-                Chuc vu moi
+                Chức vụ mới
                 <input name="ChucVu" />
               </label>
-              <button type="submit" class="ghost">Cập nhật nhan vien</button>
+              <button type="submit" class="ghost">Cập nhật nhân viên</button>
             </form>
           </div>
 
           <div class="crud-panel" data-crud-panel="delete">
             <form id="employeeDeleteForm" class="inline-form compact-top">
               <label>
-                MaNV can xoa
+                MaNV cần xóa
                 <input name="employeeId" required />
               </label>
-              <button type="submit" class="danger">Xóa nhan vien</button>
+              <button type="submit" class="danger">Xóa nhân viên</button>
             </form>
           </div>
 
           <div class="section-head compact-top">
             <p class="hint">
-              Danh sach du lieu (luon hien thi) - click row de dien nhanh form
+              Danh sách dữ liệu (luôn hiển thị) - click row để điền nhanh form
               Update/Delete.
             </p>
-            <button class="ghost" id="reloadEmployees">Tai danh sach</button>
+            <button class="ghost" id="reloadEmployees">Tải danh sách</button>
           </div>
           <div class="table-wrap" id="employeesTableWrap"></div>
 
-          <pre class="result-box" id="employeeResult">Chưa co thao tac.</pre>
+          <pre class="result-box" id="employeeResult">Chưa có thao tác.</pre>
         </section>
       </section>
     </main>

@@ -25,9 +25,9 @@
             >CRUD Nhân viên</a
           >
           <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
-          <a href="/central-inventory.html" class="nav-link">CRUD Tồn kho</a>
+          <a href="/central-inventory.html" class="nav-link">Tồn kho</a>
           <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
-          <a href="/central-transfer.html" class="nav-link">Luân chuyển hang</a>
+          <a href="/central-transfer.html" class="nav-link">Luân chuyển hàng</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
       </aside>
@@ -66,7 +66,7 @@
                 </select>
               </label>
               <label>
-                MaNV (tuy chon)
+                MaNV (tùy chọn)
                 <input name="MaNV" placeholder="VD: H003" />
               </label>
               <label>
@@ -74,7 +74,7 @@
                 <input name="HoTen" required />
               </label>
               <label>
-                Chuc vu
+                Chức vụ
                 <input name="ChucVu" required />
               </label>
               <button type="submit" class="primary">Create Nhân viên</button>
@@ -92,15 +92,15 @@
                 </select>
               </label>
               <label>
-                MaNV can sua
+                MaNV cần sửa
                 <input name="employeeId" required />
               </label>
               <label>
-                Họ tên moi
+                Họ tên mới
                 <input name="HoTen" />
               </label>
               <label>
-                Chuc vu moi
+                Chức vụ mới
                 <input name="ChucVu" />
               </label>
               <button type="submit" class="ghost">Update Nhân viên</button>
@@ -121,7 +121,7 @@
                 </select>
               </label>
               <label>
-                MaNV can xoa
+                MaNV cần xóa
                 <input name="employeeId" required />
               </label>
               <button type="submit" class="danger">Delete Nhân viên</button>
@@ -129,7 +129,7 @@
           </div>
 
           <div class="section-head compact-top">
-            <h3>Du lieu nhan vien theo chi nhánh</h3>
+            <h3>Dữ liệu nhân viên theo chi nhánh</h3>
             <div class="inline-form">
               <label>
                 Xem chi nhánh
@@ -140,14 +140,14 @@
                 </select>
               </label>
               <button class="ghost" id="loadCentralEmployees">
-                Tai danh sach
+                Tải danh sách
               </button>
             </div>
           </div>
-          <p class="hint">Click row de tu dien form Update/Delete.</p>
+          <p class="hint">Click row để tự điền form Update/Delete.</p>
           <div class="table-wrap" id="centralEmployeesTableWrap"></div>
           <pre class="result-box" id="centralEmployeeResult">
-Chưa co thao tac.</pre
+Chưa có thao tác.</pre
           >
         </section>
       </section>

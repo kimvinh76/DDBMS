@@ -24,10 +24,10 @@
           <a href="/central-employees.html" class="nav-link">CRUD Nhân viên</a>
           <a href="/central-invoices.html" class="nav-link">CRUD Hóa đơn</a>
           <a href="/central-inventory.html" class="nav-link active"
-            >CRUD Tồn kho</a
+            >Tồn kho</a
           >
           <a href="/central-products.html" class="nav-link">Quản lý sản phẩm</a>
-          <a href="/central-transfer.html" class="nav-link">Luân chuyển hang</a>
+          <a href="/central-transfer.html" class="nav-link">Luân chuyển hàng</a>
         </nav>
         <button class="ghost sidebar-logout" id="logoutBtn">Đăng xuất</button>
       </aside>
@@ -36,47 +36,22 @@
         <header class="topbar modern-topbar">
           <div>
             <p class="eyebrow">Tác vụ Toàn cục</p>
-            <h1>Central CRUD Tồn kho</h1>
+            <h1>Central Tồn kho</h1>
           </div>
         </header>
 
         <section class="card" id="central-inventory-crud">
           <div class="section-head">
-            <h2>CRUD Tồn kho theo chi nhánh</h2>
+            <h2>Cập nhật Tồn kho theo chi nhánh</h2>
           </div>
           <p class="api-line">
-            /api/inventory, /api/inventory/:productCode?branch=...
+            GET /api/inventory?branch=..., PUT /api/inventory/:productCode?branch=...
           </p>
           <div class="crud-switch" id="centralInventoryCrudSwitch">
-            <button class="crud-tab active" data-crud-target="create">
-              Create
-            </button>
-            <button class="crud-tab" data-crud-target="update">Update</button>
+            <button class="crud-tab active" data-crud-target="update">Update</button>
           </div>
 
-          <div class="crud-panel active" data-crud-panel="create">
-            <form id="centralInventoryCreateForm" class="form-grid" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
-              <label>
-                Chi nhánh
-                <select name="branch" required>
-                  <option value="HUE">HUE</option>
-                  <option value="SAIGON">SAIGON</option>
-                  <option value="HANOI">HANOI</option>
-                </select>
-              </label>
-              <label>
-                MaSP
-                <input name="productCode" required />
-              </label>
-              <label>
-                So luong ton
-                <input type="number" min="0" name="quantity" required />
-              </label>
-              <button type="submit" class="primary">Create Tồn kho</button>
-            </form>
-          </div>
-
-          <div class="crud-panel" data-crud-panel="update">
+          <div class="crud-panel active" data-crud-panel="update">
             <form id="centralInventoryUpdateForm" class="form-grid compact-top" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
               <label>
                 Chi nhánh
@@ -87,11 +62,11 @@
                 </select>
               </label>
               <label>
-                MaSP can sua
+                MaSP cần sửa
                 <input name="productCode" required />
               </label>
               <label>
-                So luong ton moi
+                Số lượng tồn mới
                 <input type="number" min="0" name="quantity" required />
               </label>
               <button type="submit" class="ghost">Update Tồn kho</button>
@@ -99,7 +74,7 @@
           </div>
 
           <div class="section-head compact-top">
-            <h3>Du lieu ton kho theo chi nhánh</h3>
+            <h3>Dữ liệu tồn kho theo chi nhánh</h3>
             <div class="inline-form">
               <label>
                 Xem chi nhánh
@@ -110,14 +85,14 @@
                 </select>
               </label>
               <button class="ghost" id="loadCentralInventory">
-                Tai danh sach
+                Tải danh sách
               </button>
             </div>
           </div>
-          <p class="hint">Click row de tu dien form Update.</p>
+          <p class="hint">Click row để tự điền form Update.</p>
           <div class="table-wrap" id="centralInventoryTableWrap"></div>
           <pre class="result-box" id="centralInventoryResult">
-Chưa co thao tac.</pre
+Chưa có thao tác.</pre
           >
         </section>
       </section>
