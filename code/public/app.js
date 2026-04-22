@@ -480,9 +480,6 @@ async function setupBranchDashboardPage() {
 
   const dashboardApiLine = document.getElementById("dashboardApiLine");
   const branchStatsGrid = document.getElementById("branchStatsGrid");
-  const branchDashboardDetail = document.getElementById(
-    "branchDashboardDetail",
-  );
   const refreshBranchDashboard = document.getElementById(
     "refreshBranchDashboard",
   );
@@ -564,22 +561,6 @@ async function setupBranchDashboardPage() {
       options: { responsive: true, maintainAspectRatio: false },
     });
 
-    const maxInventory = sortedInventory[0] || null;
-    const lowStock = inventory
-      .filter((item) => Number(item.quantity || 0) < 50)
-      .map((item) => item.productCode);
-
-    branchDashboardDetail.textContent = JSON.stringify(
-      {
-        branch,
-        generatedAt: result.generatedAt,
-        strongestProductByStock: maxInventory,
-        lowStockProducts: lowStock,
-        sevenDayRevenue: daily,
-      },
-      null,
-      2,
-    );
   }
 
   refreshBranchDashboard.addEventListener("click", () => {
@@ -941,12 +922,224 @@ async function setupCentralOverviewPage() {
   setupCentralShell();
 
   const centralStatsGrid = document.getElementById("centralStatsGrid");
-  const centralInsightResult = document.getElementById("centralInsightResult");
-  const revenueResult = document.getElementById("revenueResult");
+  const centralDailyTableWrap = document.getElementById("centralDailyTableWrap");
+  const centralWeeklyTableWrap = document.getElementById("centralWeeklyTableWrap");
+  const toggleCentralDailyRows = document.getElementById("toggleCentralDailyRows");
+  const toggleCentralWeeklyRows = document.getElementById("toggleCentralWeeklyRows");
+  const centralTopEmployeesWrap = document.getElementById("centralTopEmployeesWrap");
+  const centralTopProductsWrap = document.getElementById("centralTopProductsWrap");
+  const toggleCentralTopEmployeesRows = document.getElementById("toggleCentralTopEmployeesRows");
+  const toggleCentralTopProductsRows = document.getElementById("toggleCentralTopProductsRows");
+  const detailsModal = document.getElementById("centralAnalyticsDetailsModal");
+  const openDetailsBtn = document.getElementById("openCentralAnalyticsDetails");
+  const closeDetailsBtn = document.getElementById("closeCentralAnalyticsDetailsModal");
+  const performanceModal = document.getElementById("centralPerformanceDetailsModal");
+  const openPerformanceBtn = document.getElementById("openCentralPerformanceDetails");
+  const closePerformanceBtn = document.getElementById("closeCentralPerformanceDetailsModal");
+  const initialDetailRowLimit = 8;
+
+  let dailyRowsForModal = [];
+  let weeklyRowsForModal = [];
+  let showAllDailyRows = false;
+  let showAllWeeklyRows = false;
+  let topEmployeesForModal = [];
+  let topProductsForModal = [];
+  let showAllTopEmployeesRows = false;
+  let showAllTopProductsRows = false;
+
+  if (openDetailsBtn && detailsModal) {
+    openDetailsBtn.addEventListener("click", () => {
+      detailsModal.showModal();
+    });
+  }
+
+  if (closeDetailsBtn && detailsModal) {
+    closeDetailsBtn.addEventListener("click", () => {
+      detailsModal.close();
+    });
+  }
+
+  if (detailsModal) {
+    detailsModal.addEventListener("click", (event) => {
+      const rect = detailsModal.getBoundingClientRect();
+      const inDialog =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (!inDialog) {
+        detailsModal.close();
+      }
+    });
+  }
+
+  function aggregateDailyForChart(dailyRows) {
+    const map = new Map();
+    dailyRows.forEach((row) => {
+      const key = String(row.date || "").slice(0, 10);
+      const current = map.get(key) || 0;
+      map.set(key, current + Number(row.totalRevenue || 0));
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-7);
+  }
+
+  function aggregateWeeklyForChart(weeklyRows) {
+    const map = new Map();
+    weeklyRows.forEach((row) => {
+      const key = `${row.year}-W${String(row.week).padStart(2, "0")}`;
+      const current = map.get(key) || 0;
+      map.set(key, current + Number(row.totalRevenue || 0));
+    });
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-8);
+  }
+
+  function renderExpandableAnalyticsTable(
+    target,
+    rows,
+    toggleBtn,
+    expanded,
+    options,
+  ) {
+    if (!target) {
+      return;
+    }
+
+    const totalRows = rows.length;
+    const visibleRows = expanded ? rows : rows.slice(0, initialDetailRowLimit);
+    renderTable(target, visibleRows, options);
+
+    if (!toggleBtn) {
+      return;
+    }
+
+    const shouldShowToggle = totalRows > initialDetailRowLimit;
+    toggleBtn.style.display = shouldShowToggle ? "inline-flex" : "none";
+    if (shouldShowToggle) {
+      toggleBtn.textContent = expanded ? "Thu gọn" : "Xem thêm";
+    }
+  }
+
+  function renderModalTables() {
+    renderExpandableAnalyticsTable(
+      centralDailyTableWrap,
+      dailyRowsForModal,
+      toggleCentralDailyRows,
+      showAllDailyRows,
+      {
+        tableId: "central-daily-analytics",
+        emptyMessage: "Chưa có dữ liệu theo ngày.",
+      },
+    );
+
+    renderExpandableAnalyticsTable(
+      centralWeeklyTableWrap,
+      weeklyRowsForModal,
+      toggleCentralWeeklyRows,
+      showAllWeeklyRows,
+      {
+        tableId: "central-weekly-analytics",
+        emptyMessage: "Chưa có dữ liệu theo tuần.",
+      },
+    );
+  }
+
+  if (toggleCentralDailyRows) {
+    toggleCentralDailyRows.addEventListener("click", () => {
+      showAllDailyRows = !showAllDailyRows;
+      renderModalTables();
+    });
+  }
+
+  if (toggleCentralWeeklyRows) {
+    toggleCentralWeeklyRows.addEventListener("click", () => {
+      showAllWeeklyRows = !showAllWeeklyRows;
+      renderModalTables();
+    });
+  }
+
+  if (toggleCentralTopEmployeesRows) {
+    toggleCentralTopEmployeesRows.addEventListener("click", () => {
+      showAllTopEmployeesRows = !showAllTopEmployeesRows;
+      renderPerformanceTables();
+    });
+  }
+
+  if (toggleCentralTopProductsRows) {
+    toggleCentralTopProductsRows.addEventListener("click", () => {
+      showAllTopProductsRows = !showAllTopProductsRows;
+      renderPerformanceTables();
+    });
+  }
+
+  if (openPerformanceBtn && performanceModal) {
+    openPerformanceBtn.addEventListener("click", () => {
+      performanceModal.showModal();
+    });
+  }
+
+  if (closePerformanceBtn && performanceModal) {
+    closePerformanceBtn.addEventListener("click", () => {
+      performanceModal.close();
+    });
+  }
+
+  if (performanceModal) {
+    performanceModal.addEventListener("click", (event) => {
+      const rect = performanceModal.getBoundingClientRect();
+      const inDialog =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (!inDialog) {
+        performanceModal.close();
+      }
+    });
+  }
+
+  function renderPerformanceTables() {
+    renderExpandableAnalyticsTable(
+      centralTopEmployeesWrap,
+      topEmployeesForModal,
+      toggleCentralTopEmployeesRows,
+      showAllTopEmployeesRows,
+      {
+        tableId: "central-top-employees",
+        emptyMessage: "Chưa có dữ liệu top nhân viên.",
+      },
+    );
+
+    renderExpandableAnalyticsTable(
+      centralTopProductsWrap,
+      topProductsForModal,
+      toggleCentralTopProductsRows,
+      showAllTopProductsRows,
+      {
+        tableId: "central-top-products",
+        emptyMessage: "Chưa có dữ liệu top sản phẩm.",
+      },
+    );
+  }
 
   async function loadRevenue() {
-    const result = await fetchJSON("/api/revenue/national?branch=CENTRAL");
+    const [result, analytics] = await Promise.all([
+      fetchJSON("/api/revenue/national?branch=CENTRAL"),
+      fetchJSON("/api/analytics/overview?branch=CENTRAL"),
+    ]);
+
     const byBranch = Array.isArray(result.byBranch) ? result.byBranch : [];
+    const daily = Array.isArray(analytics.daily) ? analytics.daily : [];
+    const weekly = Array.isArray(analytics.weekly) ? analytics.weekly : [];
+    const topEmployees = Array.isArray(analytics.topEmployees) ? analytics.topEmployees : [];
+    const topProducts = Array.isArray(analytics.topProducts) ? analytics.topProducts : [];
+    const weekCompare = Array.isArray(analytics.weekCompare)
+      ? analytics.weekCompare
+      : [];
+
     const best = byBranch.reduce((acc, item) => {
       if (!acc || Number(item.revenue || 0) > Number(acc.revenue || 0)) {
         return item;
@@ -1010,24 +1203,102 @@ async function setupCentralOverviewPage() {
       options: { responsive: true, maintainAspectRatio: false },
     });
 
-    centralInsightResult.textContent = JSON.stringify(
-      {
-        bestBranch: best || null,
-        branchRanking: [...byBranch].sort(
-          (a, b) => Number(b.revenue || 0) - Number(a.revenue || 0),
-        ),
-        nationalRevenue: result.nationalRevenue,
+    const dailyForChart = aggregateDailyForChart(daily);
+    renderChart("centralDailyRevenueChart", {
+      type: "line",
+      data: {
+        labels: dailyForChart.map(([date]) => date.slice(5)),
+        datasets: [
+          {
+            label: "Doanh thu toàn hệ thống",
+            data: dailyForChart.map(([, revenue]) => revenue),
+            borderColor: "#1c7ca0",
+            backgroundColor: "rgba(28,124,160,0.2)",
+            tension: 0.3,
+            fill: true,
+          },
+        ],
       },
-      null,
-      2,
-    );
+      options: { responsive: true, maintainAspectRatio: false },
+    });
 
-    revenueResult.textContent = JSON.stringify(result, null, 2);
+    const weeklyForChart = aggregateWeeklyForChart(weekly);
+    renderChart("centralWeeklyRevenueChart", {
+      type: "bar",
+      data: {
+        labels: weeklyForChart.map(([label]) => label),
+        datasets: [
+          {
+            label: "Doanh thu theo tuần",
+            data: weeklyForChart.map(([, revenue]) => revenue),
+            backgroundColor: "#0c8d8a",
+          },
+        ],
+      },
+      options: { responsive: true, maintainAspectRatio: false },
+    });
+
+    renderChart("centralWeekCompareChart", {
+      type: "bar",
+      data: {
+        labels: weekCompare.map((row) => row.branch),
+        datasets: [
+          {
+            label: "Tuần này",
+            data: weekCompare.map((row) => Number(row.thisWeekRevenue || 0)),
+            backgroundColor: "#2e6ad1",
+          },
+          {
+            label: "Tuần trước",
+            data: weekCompare.map((row) => Number(row.lastWeekRevenue || 0)),
+            backgroundColor: "#ca5b2d",
+          },
+        ],
+      },
+      options: { responsive: true, maintainAspectRatio: false },
+    });
+
+    dailyRowsForModal = daily.map((row) => ({
+        ChiNhanh: row.branch,
+        Ngay: String(row.date || "").slice(0, 10),
+        TongSoDonHang: row.totalOrders,
+        TongDoanhThu: row.totalRevenue,
+      }));
+
+    weeklyRowsForModal = weekly.map((row) => ({
+        ChiNhanh: row.branch,
+        Nam: row.year,
+        TuanTrongNam: row.week,
+        TongSoDonHang: row.totalOrders,
+        TongDoanhThu: row.totalRevenue,
+      }));
+
+    topEmployeesForModal = topEmployees.map((row) => ({
+      ChiNhanh: row.branch,
+      MaNV: row.employeeId,
+      HoTen: row.employeeName,
+      TongDoanhThu: row.totalRevenue,
+    }));
+
+    topProductsForModal = topProducts.map((row) => ({
+      ChiNhanh: row.branch,
+      MaSP: row.productCode,
+      TenHang: row.productName,
+      TongSoLuongBan: row.totalSold,
+    }));
+
+    showAllDailyRows = false;
+    showAllWeeklyRows = false;
+    showAllTopEmployeesRows = false;
+    showAllTopProductsRows = false;
+    renderModalTables();
+    renderPerformanceTables();
+
   }
 
   document.getElementById("loadRevenue").addEventListener("click", () => {
     loadRevenue().catch((error) => {
-      revenueResult.textContent = `Lỗi: ${error.message}`;
+      centralStatsGrid.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
     });
   });
 

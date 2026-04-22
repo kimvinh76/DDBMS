@@ -15,6 +15,95 @@ function linkedServerNames() {
   };
 }
 
+function isReadProcMode() {
+  return String(process.env.READONLY_USE_SP || "0") === "1";
+}
+
+function isEmployeeWriteProcMode() {
+  return String(process.env.EMPLOYEE_WRITE_USE_SP || "0") === "1";
+}
+
+function isInventoryImportProcMode() {
+  return String(process.env.INVENTORY_IMPORT_USE_SP || "0") === "1";
+}
+
+function isInvoiceCreateProcMode() {
+  return String(process.env.INVOICE_CREATE_USE_SP || "0") === "1";
+}
+
+function invoiceProcEnabledBranches() {
+  return String(process.env.INVOICE_CREATE_SP_BRANCHES || "")
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function isInvoiceProcEnabledForBranch(branch) {
+  if (!isInvoiceCreateProcMode()) {
+    return false;
+  }
+  const enabled = invoiceProcEnabledBranches();
+  return enabled.includes(String(branch || "").toUpperCase());
+}
+
+function localProcNamesByBranch() {
+  return {
+    listEmployees: "dbo.usp_Local_DanhSachNhanVien",
+    createEmployee: "dbo.usp_Local_ThemNhanVien",
+    updateEmployee: "dbo.usp_Local_CapNhatNhanVien",
+    deleteEmployee: "dbo.usp_Local_XoaNhanVien",
+    listInvoices: "dbo.usp_Local_DanhSachHoaDon",
+    invoiceDetails: "dbo.usp_Local_ChiTietHoaDon",
+    createInvoiceLines: "dbo.usp_Local_TaoHoaDonNhieuDong",
+    listInventory: "dbo.usp_Local_DanhSachTonKho",
+    inventoryByCode: "dbo.usp_Local_TonKhoTheoMaSP",
+    updateInventory: "dbo.usp_Local_CapNhatTonKhoTongQuat",
+    productByCode: "dbo.usp_Local_HangHoaTheoMaSP",
+    dashboardSummary: "dbo.usp_Local_DashboardTongQuan",
+    dashboardRevenue7d: "dbo.usp_Local_DashboardDoanhThu7Ngay",
+    dashboardTopStock: "dbo.usp_Local_DashboardTopTonKho",
+  };
+}
+
+function centralProcNames() {
+  return {
+    createEmployee: "dbo.usp_Central_ThemNhanVien",
+    updateEmployee: "dbo.usp_Central_CapNhatNhanVien",
+    deleteEmployee: "dbo.usp_Central_XoaNhanVien",
+  };
+}
+
+function normalizeAnalyticsBranch(branch) {
+  const normalized = String(branch || "").trim().toUpperCase();
+  if (["HUE", "SAIGON", "HANOI"].includes(normalized)) {
+    return normalized;
+  }
+  return "HUE";
+}
+
+function sourceInfoByBranch(branch) {
+  const linked = linkedServerNames();
+  if (branch === "HUE") {
+    return { server: linked.HUE, db: dbNameByBranch("HUE") };
+  }
+  if (branch === "SAIGON") {
+    return { server: linked.SAIGON, db: dbNameByBranch("SAIGON") };
+  }
+  return { server: linked.HANOI, db: dbNameByBranch("HANOI") };
+}
+
+async function executeAnalyticsProcFromCentral(pool, sourceBranch, procName) {
+  const source = sourceInfoByBranch(sourceBranch);
+  const query = `EXEC [${source.server}].[${source.db}].dbo.${procName};`;
+  const rs = await pool.request().query(query);
+  return rs.recordset || [];
+}
+
+/*
+ * Kiểm tra bảng `HoaDon` có cột `MaNV` hay không.
+ * Truy vấn: SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;
+ * Dùng để quyết định có cần xử lý/validate nhân viên (MaNV) khi thao tác hóa đơn.
+ */
 async function hasHoaDonEmployeeColumnWithPool(pool) {
   const rs = await pool
     .request()
@@ -22,12 +111,22 @@ async function hasHoaDonEmployeeColumnWithPool(pool) {
   return Boolean((rs.recordset[0] || {}).hasColumn);
 }
 
+/*
+ * Tương tự nhưng chạy trong transaction hiện có.
+ * Truy vấn: SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;
+ * Dùng trong luồng giao dịch của hóa đơn để kiểm tra cột `MaNV`.
+ */
 async function hasHoaDonEmployeeColumnWithTransaction(transaction) {
   const rs = await new sql.Request(transaction)
     .query("SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;");
   return Boolean((rs.recordset[0] || {}).hasColumn);
 }
 
+/*
+ * Kiểm tra tồn tại `MaNV` trong chi nhánh (trong transaction).
+ * Truy vấn: SELECT TOP 1 MaNV FROM NhanVien WHERE MaNV = @MaNV AND ChiNhanh = @ChiNhanh
+ * Ném lỗi nếu không tìm thấy. Dùng cho tạo/cập nhật hóa đơn.
+ */
 async function ensureEmployeeExists(transaction, branch, employeeId) {
   if (!employeeId) {
     return;
@@ -47,6 +146,11 @@ async function ensureEmployeeExists(transaction, branch, employeeId) {
   }
 }
 
+/*
+ * Lấy số tồn hiện tại cho sản phẩm ở chi nhánh (trong transaction).
+ * Truy vấn: SELECT TOP 1 SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP
+ * Trả về số (0 nếu không có). Dùng bởi deductStock/addStock và luồng hóa đơn.
+ */
 async function getStockByBranch(transaction, branch, productCode) {
   const rs = await new sql.Request(transaction)
     .input("ChiNhanh", sql.VarChar(10), branch)
@@ -59,6 +163,11 @@ async function getStockByBranch(transaction, branch, productCode) {
   return Number((rs.recordset[0] || {}).SoLuongTon);
 }
 
+/*
+ * Trừ số lượng khỏi tồn kho (`TonKho`) trong transaction.
+ * Kiểm tra tồn bằng `getStockByBranch`, sau đó chạy UPDATE TonKho ...
+ * Ném lỗi nếu sản phẩm không tồn tại hoặc tồn không đủ.
+ */
 async function deductStock(transaction, branch, productCode, quantity) {
   const current = await getStockByBranch(transaction, branch, productCode);
   if (!Number.isFinite(current)) {
@@ -81,6 +190,11 @@ async function deductStock(transaction, branch, productCode, quantity) {
     `);
 }
 
+/*
+ * Cộng số lượng vào tồn kho. Nếu dòng chưa có thì insert mới.
+ * Thực hiện UPDATE TonKho ...; nếu @@ROWCOUNT = 0 thì INSERT INTO TonKho(...)
+ * Dùng khi hoàn/hủy hóa đơn hoặc điều chỉnh tồn bằng tay.
+ */
 async function addStock(transaction, branch, productCode, quantity) {
   await new sql.Request(transaction)
     .input("ChiNhanh", sql.VarChar(10), branch)
@@ -99,23 +213,73 @@ async function addStock(transaction, branch, productCode, quantity) {
     `);
 }
 
+/*
+ * Liệt kê nhân viên từ DB chi nhánh.
+ * Truy vấn: SELECT * FROM NhanVien
+ * Nếu ở mock mode thì gọi `mock.listEmployeesByBranch`.
+ */
 async function listEmployeesByBranch(branch) {
   if (isMockMode()) {
     return mock.listEmployeesByBranch(branch);
   }
 
   const pool = await getPool(branch);
+  if (isReadProcMode()) {
+    // SP mode (Phase 1): đọc danh sách nhân viên qua proc local.
+    const procs = localProcNamesByBranch();
+    const result = await pool.request().execute(procs.listEmployees);
+    return result.recordset;
+  }
+
   const result = await pool.request().query("SELECT * FROM NhanVien;");
   return result.recordset;
 }
 
+/*
+ * Tạo nhân viên mới trong DB chi nhánh.
+ * Truy vấn: INSERT INTO NhanVien(...) rồi SELECT TOP 1 * để trả về bản ghi tạo.
+ * Nếu mock mode thì dùng `mock.createEmployee`.
+ */
 async function createEmployee(branch, payload) {
   if (isMockMode()) {
     return mock.createEmployee(branch, payload);
   }
 
-  const maNV = payload.MaNV || `${branch[0]}${String(Date.now()).slice(-4)}`;
   const pool = await getPool(branch);
+  const maNV = payload.MaNV || `${branch[0]}${String(Date.now()).slice(-4)}`;
+
+  if (isEmployeeWriteProcMode()) {
+    // SP mode (Phase 2): CRUD nhân viên qua proc local/central.
+    const localProcs = localProcNamesByBranch();
+    const centralProcs = centralProcNames();
+
+    if (branch === "CENTRAL") {
+      const targetBranch = String(payload.ChiNhanh || payload.branch || "")
+        .trim()
+        .toUpperCase();
+      if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
+        throw new Error("ChiNhanh is required for CENTRAL and must be HUE/SAIGON/HANOI");
+      }
+
+      const rs = await pool
+        .request()
+        .input("MaNV", sql.VarChar(50), maNV)
+        .input("HoTen", sql.NVarChar(120), payload.HoTen)
+        .input("ChucVu", sql.NVarChar(80), payload.ChucVu)
+        .input("ChiNhanh", sql.VarChar(10), targetBranch)
+        .execute(centralProcs.createEmployee);
+      return rs.recordset[0] || null;
+    }
+
+    const rs = await pool
+      .request()
+      .input("MaNV", sql.VarChar(50), maNV)
+      .input("HoTen", sql.NVarChar(120), payload.HoTen)
+      .input("ChucVu", sql.NVarChar(80), payload.ChucVu)
+      .execute(localProcs.createEmployee);
+    return rs.recordset[0] || null;
+  }
+
   await pool
     .request()
     .input("MaNV", sql.VarChar(50), maNV)
@@ -133,12 +297,54 @@ async function createEmployee(branch, payload) {
   return inserted.recordset[0];
 }
 
+/*
+ * Cập nhật nhân viên trong DB chi nhánh.
+ * Truy vấn: UPDATE NhanVien SET ... WHERE MaNV = @MaNV; sau đó SELECT TOP 1 * trả về bản ghi.
+ * Nếu mock mode thì dùng `mock.updateEmployee`.
+ */
 async function updateEmployee(branch, employeeId, payload) {
   if (isMockMode()) {
     return mock.updateEmployee(branch, employeeId, payload);
   }
 
   const pool = await getPool(branch);
+  if (isEmployeeWriteProcMode()) {
+    // SP mode (Phase 2): cập nhật nhân viên qua proc local/central.
+    const localProcs = localProcNamesByBranch();
+    const centralProcs = centralProcNames();
+
+    if (branch === "CENTRAL") {
+      const targetBranch = payload?.ChiNhanh
+        ? String(payload.ChiNhanh).trim().toUpperCase()
+        : null;
+
+      const rs = await pool
+        .request()
+        .input("MaNV", sql.VarChar(50), employeeId)
+        .input("HoTen", sql.NVarChar(120), payload.HoTen || null)
+        .input("ChucVu", sql.NVarChar(80), payload.ChucVu || null)
+        .input("ChiNhanh", sql.VarChar(10), targetBranch)
+        .execute(centralProcs.updateEmployee);
+
+      if (!rs.recordset.length) {
+        throw new Error(`Employee ${employeeId} not found in CENTRAL`);
+      }
+      return rs.recordset[0];
+    }
+
+    const rs = await pool
+      .request()
+      .input("MaNV", sql.VarChar(50), employeeId)
+      .input("HoTen", sql.NVarChar(120), payload.HoTen || null)
+      .input("ChucVu", sql.NVarChar(80), payload.ChucVu || null)
+      .execute(localProcs.updateEmployee);
+
+    if (!rs.recordset.length) {
+      throw new Error(`Employee ${employeeId} not found in ${branch}`);
+    }
+    return rs.recordset[0];
+  }
+
   await pool
     .request()
     .input("MaNV", sql.VarChar(50), employeeId)
@@ -161,12 +367,46 @@ async function updateEmployee(branch, employeeId, payload) {
   return updated.recordset[0];
 }
 
+/*
+ * Xóa nhân viên trong DB chi nhánh.
+ * Trình tự: SELECT TOP 1 * để kiểm tra tồn tại, rồi DELETE FROM NhanVien.
+ * Nếu mock mode thì dùng `mock.deleteEmployee`.
+ */
 async function deleteEmployee(branch, employeeId) {
   if (isMockMode()) {
     return mock.deleteEmployee(branch, employeeId);
   }
 
   const pool = await getPool(branch);
+  if (isEmployeeWriteProcMode()) {
+    // SP mode (Phase 2): xóa nhân viên qua proc local/central.
+    const localProcs = localProcNamesByBranch();
+    const centralProcs = centralProcNames();
+
+    const beforeDelete = await pool
+      .request()
+      .input("MaNV", sql.VarChar(50), employeeId)
+      .query("SELECT TOP 1 * FROM NhanVien WHERE MaNV = @MaNV;");
+
+    if (!beforeDelete.recordset.length) {
+      throw new Error(`Employee ${employeeId} not found in ${branch}`);
+    }
+
+    if (branch === "CENTRAL") {
+      await pool
+        .request()
+        .input("MaNV", sql.VarChar(50), employeeId)
+        .execute(centralProcs.deleteEmployee);
+    } else {
+      await pool
+        .request()
+        .input("MaNV", sql.VarChar(50), employeeId)
+        .execute(localProcs.deleteEmployee);
+    }
+
+    return beforeDelete.recordset[0];
+  }
+
   const beforeDelete = await pool
     .request()
     .input("MaNV", sql.VarChar(50), employeeId)
@@ -184,12 +424,24 @@ async function deleteEmployee(branch, employeeId) {
   return beforeDelete.recordset[0];
 }
 
+/*
+ * Liệt kê tóm tắt hóa đơn cho chi nhánh. Nếu có cột `MaNV` sẽ JOIN `NhanVien`.
+ * Truy vấn gồm JOIN giữa `HoaDon`, `ChiTietHoaDon` (và `NhanVien` nếu có).
+ * Nếu mock mode thì gọi `mock.listInvoicesByBranch`.
+ */
 async function listInvoicesByBranch(branch) {
   if (isMockMode()) {
     return mock.listInvoicesByBranch(branch);
   }
 
   const pool = await getPool(branch);
+  if (isReadProcMode()) {
+    // SP mode (Phase 1): đọc danh sách hóa đơn qua proc local.
+    const procs = localProcNamesByBranch();
+    const result = await pool.request().execute(procs.listInvoices);
+    return result.recordset;
+  }
+
   const hasMaNV = await hasHoaDonEmployeeColumnWithPool(pool);
   const query = hasMaNV
     ? `
@@ -227,12 +479,27 @@ async function listInvoicesByBranch(branch) {
   return result.recordset;
 }
 
+/*
+ * Lấy chi tiết dòng hóa đơn theo `MaHD`.
+ * Truy vấn: SELECT các cột từ `ChiTietHoaDon` và JOIN `HangHoa` để lấy `TenHang`.
+ * Nếu mock mode thì gọi `mock.getInvoiceDetailsLocal`.
+ */
 async function getInvoiceDetails(branch, invoiceId) {
   if (isMockMode()) {
     return mock.getInvoiceDetailsLocal(branch, invoiceId);
   }
 
   const pool = await getPool(branch);
+  if (isReadProcMode()) {
+    // SP mode (Phase 1): đọc chi tiết hóa đơn qua proc local.
+    const procs = localProcNamesByBranch();
+    const result = await pool
+      .request()
+      .input("MaHD", sql.VarChar(50), invoiceId)
+      .execute(procs.invoiceDetails);
+    return result.recordset;
+  }
+
   const result = await pool
     .request()
     .input("MaHD", sql.VarChar(50), invoiceId)
@@ -251,9 +518,133 @@ async function getInvoiceDetails(branch, invoiceId) {
   return result.recordset;
 }
 
+/*
+ * Tạo hóa đơn (giao dịch) trong DB chi nhánh.
+ * Bước chính khi không dùng mock:
+ *  - BEGIN TRANSACTION
+ *  - Nếu `HoaDon.MaNV` tồn tại thì validate nhân viên (ensureEmployeeExists)
+ *  - Với mỗi item: SELECT `TenHang`,`Gia` từ `dbo.HangHoa`; nếu chưa có thì INSERT (upsert)
+ *    Truy vấn: SELECT TOP 1 TenHang, Gia FROM dbo.HangHoa WHERE MaSP = @MaSP
+ *  - INSERT INTO HoaDon (MaHD, GhiChu, NgayTao, ChiNhanh[, MaNV])
+ *  - INSERT INTO ChiTietHoaDon cho từng item
+ *  - Gọi `deductStock(...)` để trừ `TonKho`
+ *  - COMMIT (ROLLBACK khi lỗi)
+ */
 async function createInvoice(payload) {
   if (isMockMode()) {
     return mock.createInvoiceLocal(payload);
+  }
+
+  if (isInvoiceProcEnabledForBranch(payload.branch)) {
+    // SP mode (Phase 4): tạo hóa đơn nhiều dòng qua proc local theo từng chi nhánh bật cờ.
+    const pool = await getPool(payload.branch);
+    const procs = localProcNamesByBranch();
+    const maHD = `HD_${Date.now()}`;
+    const employeeId = String(payload.employeeId || "").trim();
+
+    if (!employeeId) {
+      throw new Error("employeeId is required for invoice creation");
+    }
+
+    const rawItems = Array.isArray(payload.items) && payload.items.length
+      ? payload.items
+      : [
+          {
+            productCode: payload.productCode,
+            unitPrice: payload.unitPrice,
+            quantity: payload.quantity,
+          },
+        ];
+
+    const mergedByProduct = new Map();
+    for (const rawItem of rawItems) {
+      const productCode = String(rawItem?.productCode || "").trim();
+      const quantity = Number(rawItem?.quantity || 0);
+      const unitPrice = Number(rawItem?.unitPrice || 0);
+
+      if (!productCode || quantity <= 0) {
+        throw new Error("Each invoice item must include productCode and quantity > 0");
+      }
+
+      const existing = mergedByProduct.get(productCode);
+      if (!existing) {
+        mergedByProduct.set(productCode, {
+          MaSP: productCode,
+          SoLuong: quantity,
+          DonGia: unitPrice > 0 ? unitPrice : null,
+        });
+        continue;
+      }
+
+      existing.SoLuong += quantity;
+      if (existing.DonGia === null && unitPrice > 0) {
+        existing.DonGia = unitPrice;
+      }
+    }
+
+    const itemsPayload = Array.from(mergedByProduct.values());
+
+    await pool
+      .request()
+      .input("MaHD", sql.VarChar(50), maHD)
+      .input("MaNV", sql.VarChar(50), employeeId)
+      .input("GhiChu", sql.NVarChar(255), String(payload.note || "").trim())
+      .input("ChiNhanhLap", sql.VarChar(10), payload.branch)
+      .input("ItemsJson", sql.NVarChar(sql.MAX), JSON.stringify(itemsPayload))
+      .execute(procs.createInvoiceLines);
+
+    const hasMaNV = await hasHoaDonEmployeeColumnWithPool(pool);
+    const header = await pool
+      .request()
+      .input("MaHD", sql.VarChar(50), maHD)
+      .query(
+        hasMaNV
+          ? `
+            SELECT TOP 1 MaHD, GhiChu, NgayTao, ChiNhanh, MaNV
+            FROM HoaDon
+            WHERE MaHD = @MaHD;
+          `
+          : `
+            SELECT TOP 1 MaHD, GhiChu, NgayTao, ChiNhanh, NULL AS MaNV
+            FROM HoaDon
+            WHERE MaHD = @MaHD;
+          `,
+      );
+
+    const lines = await getInvoiceDetails(payload.branch, maHD);
+    const totalAmount = lines.reduce((sum, line) => sum + Number(line.ThanhTien || 0), 0);
+    const first = lines[0] || null;
+    const hd = header.recordset[0] || {
+      MaHD: maHD,
+      GhiChu: String(payload.note || "").trim(),
+      NgayTao: new Date(),
+      ChiNhanh: payload.branch,
+      MaNV: employeeId,
+    };
+
+    return {
+      MaHD: hd.MaHD,
+      TongTien: totalAmount,
+      GhiChu: hd.GhiChu,
+      ChiNhanh: hd.ChiNhanh,
+      MaNV: hd.MaNV,
+      items: lines.map((line) => ({
+        productCode: line.MaSP,
+        productName: line.TenHang,
+        quantity: Number(line.SoLuong || 0),
+        unitPrice: Number(line.DonGia || 0),
+        totalAmount: Number(line.ThanhTien || 0),
+      })),
+      ...(first
+        ? {
+            MaSP: first.MaSP,
+            SoLuong: Number(first.SoLuong || 0),
+            TenHang: first.TenHang,
+            DonGia: Number(first.DonGia || 0),
+          }
+        : {}),
+      NgayTao: new Date(hd.NgayTao || new Date()).toISOString(),
+    };
   }
 
   const pool = await getPool(payload.branch);
@@ -429,6 +820,7 @@ async function createInvoice(payload) {
   }
 }
 
+
 async function updateInvoice(branch, invoiceId, payload) {
   if (isMockMode()) {
     return mock.updateInvoiceLocal(branch, invoiceId, payload);
@@ -602,6 +994,7 @@ async function updateInvoice(branch, invoiceId, payload) {
   }
 }
 
+
 async function deleteInvoice(branch, invoiceId) {
   if (isMockMode()) {
     return mock.deleteInvoiceLocal(branch, invoiceId);
@@ -658,6 +1051,11 @@ async function deleteInvoice(branch, invoiceId) {
   }
 }
 
+/*
+ * Liệt kê nhân viên từ tất cả chi nhánh bằng linked servers (từ CENTRAL).
+ * Truy vấn: UNION ALL select từ bảng `NhanVien` trên các linked server.
+ * Nếu mock mode thì dùng `mock.listAllEmployees()`.
+ */
 async function listAllEmployeesFromCentral() {
   if (isMockMode()) {
     return mock.listAllEmployees();
@@ -665,6 +1063,19 @@ async function listAllEmployeesFromCentral() {
 
   const linked = linkedServerNames();
   const pool = await getPool("CENTRAL");
+  if (isReadProcMode()) {
+    try {
+      // VIEW mode (Phase 1): ưu tiên đọc view toàn cục đã dựng ở branch SQL.
+      const viaView = await pool.request().query(`
+        SELECT MaNV, HoTen, ChucVu, ChiNhanh
+        FROM [${linked.HUE}].[Store_H].dbo.v_NhanVien_ToanQuoc;
+      `);
+      return viaView.recordset;
+    } catch (_viewError) {
+      // Fallback: giữ query linked table cũ khi view chưa sẵn sàng.
+    }
+  }
+
   const result = await pool.request().query(`
     SELECT * FROM [${linked.HUE}].[Store_H].dbo.NhanVien
     UNION ALL
@@ -676,6 +1087,11 @@ async function listAllEmployeesFromCentral() {
   return result.recordset;
 }
 
+/*
+ * Tổng hợp doanh thu toàn quốc bằng cách query `ChiTietHoaDon` trên linked servers.
+ * Truy vấn: UNION ALL `ChiTietHoaDon` từ từng server, sau đó SUM theo branch.
+ * Nếu mock mode thì dùng `mock.revenueReport()`.
+ */
 async function getNationalRevenue() {
   if (isMockMode()) {
     return mock.revenueReport();
@@ -683,6 +1099,32 @@ async function getNationalRevenue() {
 
   const linked = linkedServerNames();
   const pool = await getPool("CENTRAL");
+  if (isReadProcMode()) {
+    try {
+      // VIEW mode (Phase 1): ưu tiên tổng hợp doanh thu từ view toàn cục.
+      const viewRs = await pool.request().query(`
+        SELECT ChiNhanh AS BranchCode, SUM(ThanhTien) AS Revenue
+        FROM [${linked.HUE}].[Store_H].dbo.v_HoaDonChiTiet_ToanQuoc
+        GROUP BY ChiNhanh;
+      `);
+
+      const byBranch = viewRs.recordset.map((row) => ({
+        branch: row.BranchCode,
+        revenue: Number(row.Revenue || 0),
+      }));
+      const nationalRevenue = byBranch.reduce((sum, item) => sum + item.revenue, 0);
+
+      return {
+        mode: "SQL_SERVER",
+        generatedAt: new Date().toISOString(),
+        byBranch,
+        nationalRevenue,
+      };
+    } catch (_viewError) {
+      // Fallback: giữ query linked table cũ khi view chưa sẵn sàng.
+    }
+  }
+
   const result = await pool.request().query(`
     SELECT BranchCode, SUM(LineAmount) AS Revenue
     FROM (
@@ -712,6 +1154,87 @@ async function getNationalRevenue() {
   };
 }
 
+async function getCentralAnalyticsOverview(sourceBranch) {
+  if (isMockMode()) {
+    return {
+      mode: "MOCK",
+      analyticsSourceBranch: normalizeAnalyticsBranch(sourceBranch),
+      generatedAt: new Date().toISOString(),
+      daily: [],
+      weekly: [],
+      topEmployees: [],
+      topProducts: [],
+      weekCompare: [],
+    };
+  }
+
+  const pool = await getPool("CENTRAL");
+  const analyticsSourceBranch = normalizeAnalyticsBranch(
+    sourceBranch || process.env.ANALYTICS_SP_SOURCE_BRANCH || "HUE",
+  );
+
+  const [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
+    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_DoanhThuVaSoDon_TheoNgay"),
+    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_DoanhThuVaSoDon_TheoTuan"),
+    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_NhanVienBanTotNhatTuan"),
+    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_SanPhamBanChayNhat_MoiChiNhanh"),
+    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_SoSanhDoanhThuTuan"),
+  ]);
+
+  const daily = dailyRows.map((row) => ({
+    branch: row.ChiNhanh,
+    date: row.Ngay,
+    totalOrders: Number(row.TongSoDonHang || 0),
+    totalRevenue: Number(row.TongDoanhThu || 0),
+  }));
+
+  const weekly = weeklyRows.map((row) => ({
+    branch: row.ChiNhanh,
+    year: Number(row.Nam || 0),
+    week: Number(row.TuanTrongNam || 0),
+    totalOrders: Number(row.TongSoDonHang || 0),
+    totalRevenue: Number(row.TongDoanhThu || 0),
+  }));
+
+  const topEmployees = topEmployeeRows.map((row) => ({
+    branch: row.ChiNhanh,
+    employeeId: row.MaNV,
+    employeeName: row.HoTen,
+    totalRevenue: Number(row.TongDoanhThu || 0),
+  }));
+
+  const topProducts = topProductRows.map((row) => ({
+    branch: row.ChiNhanh,
+    productCode: row.MaSP,
+    productName: row.TenHang,
+    totalSold: Number(row.TongSoLuongBan || 0),
+  }));
+
+  const weekCompare = compareRows.map((row) => ({
+    branch: row.ChiNhanh,
+    thisWeekRevenue: Number(row.DoanhThuTuanNay || 0),
+    lastWeekRevenue: Number(row.DoanhThuTuanTruoc || 0),
+  }));
+
+  return {
+    mode: "SQL_SERVER",
+    analyticsSourceBranch,
+    generatedAt: new Date().toISOString(),
+    daily,
+    weekly,
+    topEmployees,
+    topProducts,
+    weekCompare,
+  };
+}
+
+/*
+ * Liệt kê tồn kho cho chi nhánh. Nếu có `productCode` trả 1 dòng, nếu không trả tất cả `TonKho` của chi nhánh.
+ * Truy vấn:
+ *  - SELECT MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh ORDER BY MaSP
+ *  - SELECT MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP
+ * Nếu mock mode thì gọi hàm mock tương ứng.
+ */
 async function listInventory(branch, productCode) {
   if (isMockMode()) {
     if (!productCode) {
@@ -721,6 +1244,31 @@ async function listInventory(branch, productCode) {
   }
 
   const pool = await getPool(branch);
+  if (isReadProcMode()) {
+    // SP mode (Phase 1): đọc tồn kho qua proc local.
+    const procs = localProcNamesByBranch();
+    if (!productCode) {
+      const rows = await pool.request().execute(procs.listInventory);
+      return rows.recordset.map((row) => ({
+        branch,
+        productCode: row.MaSP,
+        quantity: Number(row.SoLuongTon || 0),
+      }));
+    }
+
+    const result = await pool
+      .request()
+      .input("MaSP", sql.VarChar(50), productCode)
+      .execute(procs.inventoryByCode);
+
+    const row = result.recordset[0] || { MaSP: productCode, SoLuongTon: 0 };
+    return {
+      branch,
+      productCode: row.MaSP,
+      quantity: Number(row.SoLuongTon || 0),
+    };
+  }
+
   if (!productCode) {
     const rows = await pool
       .request()
@@ -751,11 +1299,23 @@ async function listInventory(branch, productCode) {
   };
 }
 
+/*
+ * Liệt kê sản phẩm từ bảng `HangHoa` ở CENTRAL.
+ * Truy vấn: SELECT MaSP AS productCode, TenHang AS productName, Gia AS unitPrice FROM dbo.HangHoa
+ * Nếu mock mode thì dùng `mock.listProducts()`.
+ */
 async function listProducts() {
   if (isMockMode()) {
     return mock.listProducts();
   }
+
   const pool = await getPool("CENTRAL");
+  if (isReadProcMode()) {
+    // SP mode (Phase 1): đọc danh mục hàng hóa qua proc central.
+    const result = await pool.request().execute("dbo.usp_Central_DanhSachHangHoa");
+    return result.recordset;
+  }
+
   const result = await pool.request().query(`
     IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
       SELECT MaSP AS productCode, TenHang AS productName, Gia AS unitPrice FROM dbo.HangHoa
@@ -765,6 +1325,14 @@ async function listProducts() {
   return result.recordset;
 }
 
+/*
+ * Tạo sản phẩm ở CENTRAL (`HangHoa`) và đảm bảo có `HangHoa` + `TonKho` trên mỗi chi nhánh (qua linked servers).
+ * Thực hiện:
+ *  - INSERT vào `dbo.HangHoa` trên CENTRAL nếu chưa có
+ *  - Với mỗi branch: INSERT vào [linkedServer].[db].dbo.HangHoa nếu chưa có
+ *  - Với mỗi branch: INSERT vào [linkedServer].[db].dbo.TonKho (MaSP, 0, ChiNhanh) nếu chưa có
+ * Nếu mock mode thì dùng `mock.createProduct(payload)`.
+ */
 async function createProduct(payload) {
   if (isMockMode()) {
     return mock.createProduct(payload);
@@ -825,6 +1393,11 @@ async function createProduct(payload) {
   return { productCode: code, productName: name, unitPrice: price };
 }
 
+/*
+ * Cập nhật thông tin sản phẩm ở CENTRAL (`HangHoa`).
+ * Truy vấn: UPDATE dbo.HangHoa SET ... WHERE MaSP = @MaSP
+ * Nếu mock mode thì dùng `mock.updateProduct`.
+ */
 async function updateProduct(productCode, payload) {
   if (isMockMode()) {
     return mock.updateProduct(productCode, payload);
@@ -854,6 +1427,11 @@ async function updateProduct(productCode, payload) {
   return { updated: true, productCode: code };
 }
 
+/*
+ * Xóa sản phẩm khỏi CENTRAL (`HangHoa`).
+ * Truy vấn: DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP
+ * Lưu ý: không tự động xóa tồn kho trên các chi nhánh. Nếu mock mode thì dùng `mock.deleteProduct`.
+ */
 async function deleteProduct(productCode) {
   if (isMockMode()) {
     return mock.deleteProduct(productCode);
@@ -872,6 +1450,11 @@ async function deleteProduct(productCode) {
   return { deleted: true, productCode: code };
 }
 
+/*
+ * Lấy thông tin sản phẩm (MaSP, TenHang, Gia) từ `HangHoa` của chi nhánh.
+ * Truy vấn: SELECT TOP 1 MaSP, TenHang, Gia FROM HangHoa WHERE MaSP = @MaSP
+ * Nếu mock mode thì dùng `mock.getProductByCode`.
+ */
 async function getProductByCode(branch, productCode) {
   if (isMockMode()) {
     return mock.getProductByCode(branch, productCode);
@@ -880,6 +1463,49 @@ async function getProductByCode(branch, productCode) {
   const code = String(productCode || "").trim();
   if (!code) {
     throw new Error("productCode is required");
+  }
+
+  if (isReadProcMode()) {
+    if (branch === "CENTRAL") {
+      // SP mode (Phase 1): đọc hàng hóa theo mã từ central proc.
+      const centralPool = await getPool("CENTRAL");
+      const rs = await centralPool
+        .request()
+        .input("MaSP", sql.VarChar(50), code)
+        .execute("dbo.usp_Central_HangHoaTheoMaSP");
+
+      const row = rs.recordset[0] || null;
+      if (!row) {
+        return null;
+      }
+
+      return {
+        branch,
+        productCode: row.MaSP,
+        productName: row.TenHang,
+        unitPrice: Number(row.Gia || 0),
+      };
+    }
+
+    const pool = await getPool(branch);
+    const procs = localProcNamesByBranch();
+    // SP mode (Phase 1): đọc hàng hóa theo mã từ proc local của chi nhánh.
+    const rs = await pool
+      .request()
+      .input("MaSP", sql.VarChar(50), code)
+      .execute(procs.productByCode);
+
+    const row = rs.recordset[0] || null;
+    if (!row) {
+      return null;
+    }
+
+    return {
+      branch,
+      productCode: row.MaSP,
+      productName: row.TenHang,
+      unitPrice: Number(row.Gia || 0),
+    };
   }
 
   const pool = await getPool(branch);
@@ -905,6 +1531,14 @@ async function getProductByCode(branch, productCode) {
   };
 }
 
+/*
+ * Tạo một dòng tồn kho (`TonKho`) cho sản phẩm ở chi nhánh.
+ * Bước:
+ *  - Kiểm tra sản phẩm tồn tại trong `HangHoa` của chi nhánh
+ *  - INSERT INTO `TonKho` nếu chưa có
+ *  - Trả về dòng vừa tạo
+ * Nếu mock mode thì dùng `mock.createInventoryItem`.
+ */
 async function createInventoryItem(branch, payload) {
   if (isMockMode()) {
     return mock.createInventoryItem(branch, payload);
@@ -953,12 +1587,40 @@ async function createInventoryItem(branch, payload) {
   };
 }
 
+/*
+ * Cập nhật số lượng tồn cho sản phẩm ở chi nhánh.
+ * Truy vấn: UPDATE TonKho SET SoLuongTon = @SoLuongTon WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP
+ * Sau đó SELECT TOP 1 để trả về dòng cập nhật. Nếu mock mode thì dùng `mock.updateInventoryItem`.
+ */
 async function updateInventoryItem(branch, productCode, quantity) {
   if (isMockMode()) {
     return mock.updateInventoryItem(branch, productCode, quantity);
   }
 
   const pool = await getPool(branch);
+  if (isInventoryImportProcMode()) {
+    // SP mode (Phase 3+): cập nhật tồn kho qua proc tổng quát cho cả tăng/giảm.
+    const procs = localProcNamesByBranch();
+    const targetQty = Number(quantity || 0);
+    const updatedRs = await pool
+      .request()
+      .input("MaSP", sql.VarChar(50), productCode)
+      .input("SoLuongTonMoi", sql.Int, targetQty)
+      .input("ChiNhanhLap", sql.VarChar(10), branch)
+      .execute(procs.updateInventory);
+
+    const updated = (updatedRs.recordset || [])[0] || null;
+    if (!updated) {
+      throw new Error(`Product ${productCode} not found in ${branch}`);
+    }
+
+    return {
+      branch,
+      productCode: updated.MaSP,
+      quantity: Number(updated.SoLuongTon || 0),
+    };
+  }
+
   await pool
     .request()
     .input("ChiNhanh", sql.VarChar(10), branch)
@@ -987,6 +1649,11 @@ async function updateInventoryItem(branch, productCode, quantity) {
   };
 }
 
+/*
+ * Xóa một dòng tồn kho khỏi chi nhánh.
+ * Trình tự: SELECT TOP 1 để kiểm tra, sau đó DELETE FROM TonKho.
+ * Trả về dữ liệu đã xóa. Nếu mock mode thì dùng `mock.deleteInventoryItem`.
+ */
 async function deleteInventoryItem(branch, productCode) {
   if (isMockMode()) {
     return mock.deleteInventoryItem(branch, productCode);
@@ -1018,12 +1685,56 @@ async function deleteInventoryItem(branch, productCode) {
   };
 }
 
+/*
+ * Tạo số liệu cho dashboard chi nhánh bằng các truy vấn tổng hợp:
+ *  - COUNT nhân viên, COUNT hóa đơn
+ *  - SUM doanh thu từ `ChiTietHoaDon`
+ *  - SUM tổng tồn (`TonKho`) và đếm sản phẩm tồn thấp
+ * Thực thi nhiều SELECT song song và trả về kết quả tổng hợp.
+ * Nếu mock mode thì dùng `mock.branchDashboard`.
+ */
 async function getBranchDashboard(branch) {
   if (isMockMode()) {
     return mock.branchDashboard(branch);
   }
 
   const pool = await getPool(branch);
+  if (isReadProcMode()) {
+    // SP mode (Phase 1+): dashboard branch dùng proc local thay cho query trực tiếp.
+    const procs = localProcNamesByBranch();
+    const [summaryRs, revenueRs, topStockRs] = await Promise.all([
+      pool.request().execute(procs.dashboardSummary),
+      pool.request().execute(procs.dashboardRevenue7d),
+      pool.request().input("TopN", sql.Int, 8).execute(procs.dashboardTopStock),
+    ]);
+
+    const summary = (summaryRs.recordset || [])[0] || {};
+    const sevenDayRevenue = {};
+    for (const row of revenueRs.recordset || []) {
+      const key = new Date(row.Ngay || Date.now()).toISOString().slice(0, 10);
+      sevenDayRevenue[key] = Number(row.DoanhThu || 0);
+    }
+
+    const topStockByProduct = (topStockRs.recordset || []).map((row) => ({
+      productCode: row.MaSP,
+      productName: row.TenHang,
+      quantity: Number(row.SoLuongTon || 0),
+    }));
+
+    return {
+      mode: "SQL_SERVER",
+      branch,
+      employeeCount: Number(summary.employeeCount || 0),
+      invoiceCount: Number(summary.invoiceCount || 0),
+      revenue: Number(summary.revenue || 0),
+      totalStockUnits: Number(summary.totalStockUnits || 0),
+      lowStockProducts: Number(summary.lowStockProducts || 0),
+      sevenDayRevenue,
+      topStockByProduct,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
   const [employeesRs, invoicesRs, revenueRs, stockRs] = await Promise.all([
     pool.request().query("SELECT COUNT(1) AS count FROM NhanVien;"),
     pool.request().query("SELECT COUNT(1) AS count FROM HoaDon;"),
@@ -1053,6 +1764,16 @@ async function getBranchDashboard(branch) {
   };
 }
 
+/*
+ * Thực hiện chuyển tồn phân tán giữa hai chi nhánh qua CENTRAL và linked servers.
+ * Bước khi không dùng mock:
+ *  - Đọc dòng `TonKho` nguồn và đích từ linked servers
+ *  - Kiểm tra số lượng đủ
+ *  - Thực thi giao dịch phân tán (BEGIN DISTRIBUTED TRANSACTION) để UPDATE cả hai bên
+ *  - Bắt lỗi liên quan linked-server/MSDTC và trả về gợi ý
+ *  - Đọc lại lượng sau chuyển và trả before/after
+ * Nếu mock mode thì dùng `mock.transferStock`.
+ */
 async function transferStockDistributed(payload) {
   if (isMockMode()) {
     return mock.transferStock(payload);
@@ -1198,6 +1919,7 @@ module.exports = {
   deleteInvoice,
   listAllEmployeesFromCentral,
   getNationalRevenue,
+  getCentralAnalyticsOverview,
   transferStockDistributed,
   listInventory,
   listProducts,

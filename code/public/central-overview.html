@@ -41,9 +41,12 @@
         <section class="card" id="national-overview">
           <div class="section-head">
             <h2>Dashboard tổng quan</h2>
-            <button class="ghost" id="loadRevenue">Tải báo cáo</button>
+            <div class="inline-form">
+              <button class="ghost" id="loadRevenue">Tải báo cáo</button>
+            </div>
           </div>
           <p class="api-line">GET /api/revenue/national?branch=CENTRAL</p>
+          <p class="api-line">GET /api/analytics/overview?branch=CENTRAL</p>
           <div class="stats-grid" id="centralStatsGrid"></div>
 
           <div class="chart-grid compact-top">
@@ -56,21 +59,90 @@
               <canvas id="centralRevenueShareChart"></canvas>
             </article>
           </div>
-
-          <div class="section-head compact-top">
-            <h3>Nhận xét nhanh</h3>
-          </div>
-          <pre class="result-box" id="centralInsightResult">
-Đang chờ dữ liệu...</pre
-          >
         </section>
 
-        <section class="card" id="national-revenue">
+        <section class="card" id="national-analytics-daily-weekly">
           <div class="section-head">
-            <h2>Chi tiết doanh thu</h2>
+            <h2>Phân tích theo ngày và tuần</h2>
+            <button class="ghost" id="openCentralAnalyticsDetails">Xem chi tiết</button>
           </div>
-          <pre class="result-box" id="revenueResult">Chưa tải dữ liệu.</pre>
+
+          <div class="chart-grid compact-top">
+            <article class="chart-card">
+              <h3>Doanh thu 7 ngày gần nhất (toàn hệ thống)</h3>
+              <canvas id="centralDailyRevenueChart"></canvas>
+            </article>
+            <article class="chart-card">
+              <h3>Doanh thu theo tuần </h3>
+              <canvas id="centralWeeklyRevenueChart"></canvas>
+            </article>
+          </div>
+
         </section>
+
+        <section class="card" id="national-analytics-performance">
+          <div class="section-head">
+            <h2>Hiệu suất tuần hiện tại</h2>
+            <div class="inline-form">
+              <button class="ghost" id="openCentralPerformanceDetails">Xem NV/SP</button>
+            </div>
+          </div>
+
+          <div class="chart-grid compact-top">
+            <article class="chart-card">
+              <h3>So sánh tuần này và tuần trước</h3>
+              <canvas id="centralWeekCompareChart"></canvas>
+            </article>
+          </div>
+        </section>
+
+        <dialog id="centralPerformanceDetailsModal" class="modal">
+          <div class="modal-header">
+            <h3>Top tuần: Nhân viên & Sản phẩm</h3>
+            <button type="button" class="close-modal-btn" id="closeCentralPerformanceDetailsModal">×</button>
+          </div>
+
+          <div class="chart-grid performance-modal-grid">
+            <article class="chart-card">
+              <h3>Nhân viên bán tốt nhất theo chi nhánh</h3>
+              <div id="centralTopEmployeesWrap"></div>
+              <div class="more-row">
+                <button type="button" class="ghost" id="toggleCentralTopEmployeesRows">Xem thêm</button>
+              </div>
+            </article>
+            <article class="chart-card">
+              <h3>Sản phẩm bán chạy theo chi nhánh</h3>
+              <div id="centralTopProductsWrap"></div>
+              <div class="more-row">
+                <button type="button" class="ghost" id="toggleCentralTopProductsRows">Xem thêm</button>
+              </div>
+            </article>
+          </div>
+        </dialog>
+
+        <dialog id="centralAnalyticsDetailsModal" class="modal">
+          <div class="modal-header">
+            <h3>Chi tiết theo ngày và theo tuần</h3>
+            <button type="button" class="close-modal-btn" id="closeCentralAnalyticsDetailsModal">×</button>
+          </div>
+
+          <div class="chart-grid modal-grid">
+            <article class="chart-card">
+              <h3>Dữ liệu theo ngày</h3>
+              <div id="centralDailyTableWrap"></div>
+              <div class="more-row">
+                <button type="button" class="ghost" id="toggleCentralDailyRows">Xem thêm</button>
+              </div>
+            </article>
+            <article class="chart-card">
+              <h3>Dữ liệu theo tuần</h3>
+              <div id="centralWeeklyTableWrap"></div>
+              <div class="more-row">
+                <button type="button" class="ghost" id="toggleCentralWeeklyRows">Xem thêm</button>
+              </div>
+            </article>
+          </div>
+        </dialog>
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

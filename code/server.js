@@ -19,6 +19,7 @@ const {
   deleteInvoice,
   listAllEmployeesFromCentral,
   getNationalRevenue,
+  getCentralAnalyticsOverview,
   transferStockDistributed,
   listInventory,
   listProducts,
@@ -36,6 +37,26 @@ const port = Number(process.env.PORT || 3000);
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+app.use((req, _res, next) => {
+  const readMode = String(process.env.READONLY_USE_SP || "0") === "1" ? "SP" : "DIRECT";
+  const employeeWriteMode = String(process.env.EMPLOYEE_WRITE_USE_SP || "0") === "1" ? "SP" : "DIRECT";
+  const inventoryMode = String(process.env.INVENTORY_IMPORT_USE_SP || "0") === "1" ? "SP" : "DIRECT";
+  const invoiceMode = String(process.env.INVOICE_CREATE_USE_SP || "0") === "1" ? "SP" : "DIRECT";
+  const invoiceBranches = String(process.env.INVOICE_CREATE_SP_BRANCHES || "")
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean)
+    .join(",");
+
+  console.log(
+    `[MODE] ${new Date().toISOString()} ${req.method} ${req.originalUrl} `
+      + `READ=${readMode} EMP_WRITE=${employeeWriteMode} INV_UPDATE=${inventoryMode} `
+      + `INVOICE_CREATE=${invoiceMode} INVOICE_BRANCHES=[${invoiceBranches}]`,
+  );
+
+  next();
+});
 
 app.get("/health", (_req, res) => {
   res.json({
@@ -355,6 +376,24 @@ app.get("/api/revenue/national", async (req, res) => {
     }
 
     const report = await getNationalRevenue();
+    return res.json(report);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+app.get("/api/analytics/overview", async (req, res) => {
+  try {
+    const branch = normalizeBranch(req.query.branch);
+    if (!branch || !isCentralBranch(branch)) {
+      return res.status(400).json({ message: "branch must be CENTRAL" });
+    }
+
+    const sourceBranch = req.query.sourceBranch
+      ? String(req.query.sourceBranch).trim().toUpperCase()
+      : undefined;
+
+    const report = await getCentralAnalyticsOverview(sourceBranch);
     return res.json(report);
   } catch (error) {
     return res.status(500).json({ message: error.message });

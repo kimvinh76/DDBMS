@@ -1,0 +1,371 @@
+diff --git a/code/src/services/store-service.js b/code/src/services/store-service.js
+index 3b75770..f929f1f 100644
+--- a/code/src/services/store-service.js
++++ b/code/src/services/store-service.js
+@@ -15,6 +15,11 @@ function linkedServerNames() {
+   };
+ }
+ 
++/*
++ * Kiểm tra bảng `HoaDon` có cột `MaNV` hay không.
++ * Truy vấn: SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;
++ * Dùng để quyết định có cần xử lý/validate nhân viên (MaNV) khi thao tác hóa đơn.
++ */
+ async function hasHoaDonEmployeeColumnWithPool(pool) {
+   const rs = await pool
+     .request()
+@@ -22,12 +27,22 @@ async function hasHoaDonEmployeeColumnWithPool(pool) {
+   return Boolean((rs.recordset[0] || {}).hasColumn);
+ }
+ 
++/*
++ * Tương tự nhưng chạy trong transaction hiện có.
++ * Truy vấn: SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;
++ * Dùng trong luồng giao dịch của hóa đơn để kiểm tra cột `MaNV`.
++ */
+ async function hasHoaDonEmployeeColumnWithTransaction(transaction) {
+   const rs = await new sql.Request(transaction)
+     .query("SELECT CASE WHEN COL_LENGTH('dbo.HoaDon', 'MaNV') IS NULL THEN 0 ELSE 1 END AS hasColumn;");
+   return Boolean((rs.recordset[0] || {}).hasColumn);
+ }
+ 
++/*
++ * Kiểm tra tồn tại `MaNV` trong chi nhánh (trong transaction).
++ * Truy vấn: SELECT TOP 1 MaNV FROM NhanVien WHERE MaNV = @MaNV AND ChiNhanh = @ChiNhanh
++ * Ném lỗi nếu không tìm thấy. Dùng cho tạo/cập nhật hóa đơn.
++ */
+ async function ensureEmployeeExists(transaction, branch, employeeId) {
+   if (!employeeId) {
+     return;
+@@ -47,6 +62,11 @@ async function ensureEmployeeExists(transaction, branch, employeeId) {
+   }
+ }
+ 
++/*
++ * Lấy số tồn hiện tại cho sản phẩm ở chi nhánh (trong transaction).
++ * Truy vấn: SELECT TOP 1 SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP
++ * Trả về số (0 nếu không có). Dùng bởi deductStock/addStock và luồng hóa đơn.
++ */
+ async function getStockByBranch(transaction, branch, productCode) {
+   const rs = await new sql.Request(transaction)
+     .input("ChiNhanh", sql.VarChar(10), branch)
+@@ -59,6 +79,11 @@ async function getStockByBranch(transaction, branch, productCode) {
+   return Number((rs.recordset[0] || {}).SoLuongTon);
+ }
+ 
++/*
++ * Trừ số lượng khỏi tồn kho (`TonKho`) trong transaction.
++ * Kiểm tra tồn bằng `getStockByBranch`, sau đó chạy UPDATE TonKho ...
++ * Ném lỗi nếu sản phẩm không tồn tại hoặc tồn không đủ.
++ */
+ async function deductStock(transaction, branch, productCode, quantity) {
+   const current = await getStockByBranch(transaction, branch, productCode);
+   if (!Number.isFinite(current)) {
+@@ -81,6 +106,11 @@ async function deductStock(transaction, branch, productCode, quantity) {
+     `);
+ }
+ 
++/*
++ * Cộng số lượng vào tồn kho. Nếu dòng chưa có thì insert mới.
++ * Thực hiện UPDATE TonKho ...; nếu @@ROWCOUNT = 0 thì INSERT INTO TonKho(...)
++ * Dùng khi hoàn/hủy hóa đơn hoặc điều chỉnh tồn bằng tay.
++ */
+ async function addStock(transaction, branch, productCode, quantity) {
+   await new sql.Request(transaction)
+     .input("ChiNhanh", sql.VarChar(10), branch)
+@@ -99,6 +129,11 @@ async function addStock(transaction, branch, productCode, quantity) {
+     `);
+ }
+ 
++/*
++ * Liệt kê nhân viên từ DB chi nhánh.
++ * Truy vấn: SELECT * FROM NhanVien
++ * Nếu ở mock mode thì gọi `mock.listEmployeesByBranch`.
++ */
+ async function listEmployeesByBranch(branch) {
+   if (isMockMode()) {
+     return mock.listEmployeesByBranch(branch);
+@@ -109,6 +144,11 @@ async function listEmployeesByBranch(branch) {
+   return result.recordset;
+ }
+ 
++/*
++ * Tạo nhân viên mới trong DB chi nhánh.
++ * Truy vấn: INSERT INTO NhanVien(...) rồi SELECT TOP 1 * để trả về bản ghi tạo.
++ * Nếu mock mode thì dùng `mock.createEmployee`.
++ */
+ async function createEmployee(branch, payload) {
+   if (isMockMode()) {
+     return mock.createEmployee(branch, payload);
+@@ -133,6 +173,11 @@ async function createEmployee(branch, payload) {
+   return inserted.recordset[0];
+ }
+ 
++/*
++ * Cập nhật nhân viên trong DB chi nhánh.
++ * Truy vấn: UPDATE NhanVien SET ... WHERE MaNV = @MaNV; sau đó SELECT TOP 1 * trả về bản ghi.
++ * Nếu mock mode thì dùng `mock.updateEmployee`.
++ */
+ async function updateEmployee(branch, employeeId, payload) {
+   if (isMockMode()) {
+     return mock.updateEmployee(branch, employeeId, payload);
+@@ -161,6 +206,11 @@ async function updateEmployee(branch, employeeId, payload) {
+   return updated.recordset[0];
+ }
+ 
++/*
++ * Xóa nhân viên trong DB chi nhánh.
++ * Trình tự: SELECT TOP 1 * để kiểm tra tồn tại, rồi DELETE FROM NhanVien.
++ * Nếu mock mode thì dùng `mock.deleteEmployee`.
++ */
+ async function deleteEmployee(branch, employeeId) {
+   if (isMockMode()) {
+     return mock.deleteEmployee(branch, employeeId);
+@@ -184,6 +234,11 @@ async function deleteEmployee(branch, employeeId) {
+   return beforeDelete.recordset[0];
+ }
+ 
++/*
++ * Liệt kê tóm tắt hóa đơn cho chi nhánh. Nếu có cột `MaNV` sẽ JOIN `NhanVien`.
++ * Truy vấn gồm JOIN giữa `HoaDon`, `ChiTietHoaDon` (và `NhanVien` nếu có).
++ * Nếu mock mode thì gọi `mock.listInvoicesByBranch`.
++ */
+ async function listInvoicesByBranch(branch) {
+   if (isMockMode()) {
+     return mock.listInvoicesByBranch(branch);
+@@ -227,6 +282,11 @@ async function listInvoicesByBranch(branch) {
+   return result.recordset;
+ }
+ 
++/*
++ * Lấy chi tiết dòng hóa đơn theo `MaHD`.
++ * Truy vấn: SELECT các cột từ `ChiTietHoaDon` và JOIN `HangHoa` để lấy `TenHang`.
++ * Nếu mock mode thì gọi `mock.getInvoiceDetailsLocal`.
++ */
+ async function getInvoiceDetails(branch, invoiceId) {
+   if (isMockMode()) {
+     return mock.getInvoiceDetailsLocal(branch, invoiceId);
+@@ -251,6 +311,18 @@ async function getInvoiceDetails(branch, invoiceId) {
+   return result.recordset;
+ }
+ 
++/*
++ * Tạo hóa đơn (giao dịch) trong DB chi nhánh.
++ * Bước chính khi không dùng mock:
++ *  - BEGIN TRANSACTION
++ *  - Nếu `HoaDon.MaNV` tồn tại thì validate nhân viên (ensureEmployeeExists)
++ *  - Với mỗi item: SELECT `TenHang`,`Gia` từ `dbo.HangHoa`; nếu chưa có thì INSERT (upsert)
++ *    Truy vấn: SELECT TOP 1 TenHang, Gia FROM dbo.HangHoa WHERE MaSP = @MaSP
++ *  - INSERT INTO HoaDon (MaHD, GhiChu, NgayTao, ChiNhanh[, MaNV])
++ *  - INSERT INTO ChiTietHoaDon cho từng item
++ *  - Gọi `deductStock(...)` để trừ `TonKho`
++ *  - COMMIT (ROLLBACK khi lỗi)
++ */
+ async function createInvoice(payload) {
+   if (isMockMode()) {
+     return mock.createInvoiceLocal(payload);
+@@ -429,6 +501,17 @@ async function createInvoice(payload) {
+   }
+ }
+ 
++/*
++ * Cập nhật hóa đơn (giao dịch).
++ * Bước chính khi không dùng mock:
++ *  - BEGIN TRANSACTION
++ *  - Đọc `HoaDon` + `ChiTietHoaDon` hiện tại
++ *  - Lấy/điều chỉnh thông tin sản phẩm (`HangHoa`) và giá; upsert nếu cần
++ *  - UPDATE `HoaDon` (GhiChu, MaNV nếu có)
++ *  - DELETE/INSERT `ChiTietHoaDon`
++ *  - Điều chỉnh `TonKho` bằng `addStock`/`deductStock` tùy thay đổi
++ *  - COMMIT (ROLLBACK khi lỗi)
++ */
+ async function updateInvoice(branch, invoiceId, payload) {
+   if (isMockMode()) {
+     return mock.updateInvoiceLocal(branch, invoiceId, payload);
+@@ -602,6 +685,14 @@ async function updateInvoice(branch, invoiceId, payload) {
+   }
+ }
+ 
++/*
++ * Xóa hóa đơn (giao dịch):
++ *  - Kiểm tra tồn tại `HoaDon`
++ *  - Lấy `ChiTietHoaDon` của hóa đơn
++ *  - DELETE `ChiTietHoaDon` và DELETE `HoaDon`
++ *  - Với mỗi chi tiết đã xóa, gọi `addStock(...)` để trả lại tồn
++ *  - COMMIT
++ */
+ async function deleteInvoice(branch, invoiceId) {
+   if (isMockMode()) {
+     return mock.deleteInvoiceLocal(branch, invoiceId);
+@@ -658,6 +749,11 @@ async function deleteInvoice(branch, invoiceId) {
+   }
+ }
+ 
++/*
++ * Liệt kê nhân viên từ tất cả chi nhánh bằng linked servers (từ CENTRAL).
++ * Truy vấn: UNION ALL select từ bảng `NhanVien` trên các linked server.
++ * Nếu mock mode thì dùng `mock.listAllEmployees()`.
++ */
+ async function listAllEmployeesFromCentral() {
+   if (isMockMode()) {
+     return mock.listAllEmployees();
+@@ -676,6 +772,11 @@ async function listAllEmployeesFromCentral() {
+   return result.recordset;
+ }
+ 
++/*
++ * Tổng hợp doanh thu toàn quốc bằng cách query `ChiTietHoaDon` trên linked servers.
++ * Truy vấn: UNION ALL `ChiTietHoaDon` từ từng server, sau đó SUM theo branch.
++ * Nếu mock mode thì dùng `mock.revenueReport()`.
++ */
+ async function getNationalRevenue() {
+   if (isMockMode()) {
+     return mock.revenueReport();
+@@ -712,6 +813,13 @@ async function getNationalRevenue() {
+   };
+ }
+ 
++/*
++ * Liệt kê tồn kho cho chi nhánh. Nếu có `productCode` trả 1 dòng, nếu không trả tất cả `TonKho` của chi nhánh.
++ * Truy vấn:
++ *  - SELECT MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh ORDER BY MaSP
++ *  - SELECT MaSP, SoLuongTon FROM TonKho WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP
++ * Nếu mock mode thì gọi hàm mock tương ứng.
++ */
+ async function listInventory(branch, productCode) {
+   if (isMockMode()) {
+     if (!productCode) {
+@@ -751,6 +859,11 @@ async function listInventory(branch, productCode) {
+   };
+ }
+ 
++/*
++ * Liệt kê sản phẩm từ bảng `HangHoa` ở CENTRAL.
++ * Truy vấn: SELECT MaSP AS productCode, TenHang AS productName, Gia AS unitPrice FROM dbo.HangHoa
++ * Nếu mock mode thì dùng `mock.listProducts()`.
++ */
+ async function listProducts() {
+   if (isMockMode()) {
+     return mock.listProducts();
+@@ -765,6 +878,14 @@ async function listProducts() {
+   return result.recordset;
+ }
+ 
++/*
++ * Tạo sản phẩm ở CENTRAL (`HangHoa`) và đảm bảo có `HangHoa` + `TonKho` trên mỗi chi nhánh (qua linked servers).
++ * Thực hiện:
++ *  - INSERT vào `dbo.HangHoa` trên CENTRAL nếu chưa có
++ *  - Với mỗi branch: INSERT vào [linkedServer].[db].dbo.HangHoa nếu chưa có
++ *  - Với mỗi branch: INSERT vào [linkedServer].[db].dbo.TonKho (MaSP, 0, ChiNhanh) nếu chưa có
++ * Nếu mock mode thì dùng `mock.createProduct(payload)`.
++ */
+ async function createProduct(payload) {
+   if (isMockMode()) {
+     return mock.createProduct(payload);
+@@ -825,6 +946,11 @@ async function createProduct(payload) {
+   return { productCode: code, productName: name, unitPrice: price };
+ }
+ 
++/*
++ * Cập nhật thông tin sản phẩm ở CENTRAL (`HangHoa`).
++ * Truy vấn: UPDATE dbo.HangHoa SET ... WHERE MaSP = @MaSP
++ * Nếu mock mode thì dùng `mock.updateProduct`.
++ */
+ async function updateProduct(productCode, payload) {
+   if (isMockMode()) {
+     return mock.updateProduct(productCode, payload);
+@@ -854,6 +980,11 @@ async function updateProduct(productCode, payload) {
+   return { updated: true, productCode: code };
+ }
+ 
++/*
++ * Xóa sản phẩm khỏi CENTRAL (`HangHoa`).
++ * Truy vấn: DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP
++ * Lưu ý: không tự động xóa tồn kho trên các chi nhánh. Nếu mock mode thì dùng `mock.deleteProduct`.
++ */
+ async function deleteProduct(productCode) {
+   if (isMockMode()) {
+     return mock.deleteProduct(productCode);
+@@ -872,6 +1003,11 @@ async function deleteProduct(productCode) {
+   return { deleted: true, productCode: code };
+ }
+ 
++/*
++ * Lấy thông tin sản phẩm (MaSP, TenHang, Gia) từ `HangHoa` của chi nhánh.
++ * Truy vấn: SELECT TOP 1 MaSP, TenHang, Gia FROM HangHoa WHERE MaSP = @MaSP
++ * Nếu mock mode thì dùng `mock.getProductByCode`.
++ */
+ async function getProductByCode(branch, productCode) {
+   if (isMockMode()) {
+     return mock.getProductByCode(branch, productCode);
+@@ -905,6 +1041,14 @@ async function getProductByCode(branch, productCode) {
+   };
+ }
+ 
++/*
++ * Tạo một dòng tồn kho (`TonKho`) cho sản phẩm ở chi nhánh.
++ * Bước:
++ *  - Kiểm tra sản phẩm tồn tại trong `HangHoa` của chi nhánh
++ *  - INSERT INTO `TonKho` nếu chưa có
++ *  - Trả về dòng vừa tạo
++ * Nếu mock mode thì dùng `mock.createInventoryItem`.
++ */
+ async function createInventoryItem(branch, payload) {
+   if (isMockMode()) {
+     return mock.createInventoryItem(branch, payload);
+@@ -953,6 +1097,11 @@ async function createInventoryItem(branch, payload) {
+   };
+ }
+ 
++/*
++ * Cập nhật số lượng tồn cho sản phẩm ở chi nhánh.
++ * Truy vấn: UPDATE TonKho SET SoLuongTon = @SoLuongTon WHERE ChiNhanh = @ChiNhanh AND MaSP = @MaSP
++ * Sau đó SELECT TOP 1 để trả về dòng cập nhật. Nếu mock mode thì dùng `mock.updateInventoryItem`.
++ */
+ async function updateInventoryItem(branch, productCode, quantity) {
+   if (isMockMode()) {
+     return mock.updateInventoryItem(branch, productCode, quantity);
+@@ -987,6 +1136,11 @@ async function updateInventoryItem(branch, productCode, quantity) {
+   };
+ }
+ 
++/*
++ * Xóa một dòng tồn kho khỏi chi nhánh.
++ * Trình tự: SELECT TOP 1 để kiểm tra, sau đó DELETE FROM TonKho.
++ * Trả về dữ liệu đã xóa. Nếu mock mode thì dùng `mock.deleteInventoryItem`.
++ */
+ async function deleteInventoryItem(branch, productCode) {
+   if (isMockMode()) {
+     return mock.deleteInventoryItem(branch, productCode);
+@@ -1018,6 +1172,14 @@ async function deleteInventoryItem(branch, productCode) {
+   };
+ }
+ 
++/*
++ * Tạo số liệu cho dashboard chi nhánh bằng các truy vấn tổng hợp:
++ *  - COUNT nhân viên, COUNT hóa đơn
++ *  - SUM doanh thu từ `ChiTietHoaDon`
++ *  - SUM tổng tồn (`TonKho`) và đếm sản phẩm tồn thấp
++ * Thực thi nhiều SELECT song song và trả về kết quả tổng hợp.
++ * Nếu mock mode thì dùng `mock.branchDashboard`.
++ */
+ async function getBranchDashboard(branch) {
+   if (isMockMode()) {
+     return mock.branchDashboard(branch);
+@@ -1053,6 +1215,16 @@ async function getBranchDashboard(branch) {
+   };
+ }
+ 
++/*
++ * Thực hiện chuyển tồn phân tán giữa hai chi nhánh qua CENTRAL và linked servers.
++ * Bước khi không dùng mock:
++ *  - Đọc dòng `TonKho` nguồn và đích từ linked servers
++ *  - Kiểm tra số lượng đủ
++ *  - Thực thi giao dịch phân tán (BEGIN DISTRIBUTED TRANSACTION) để UPDATE cả hai bên
++ *  - Bắt lỗi liên quan linked-server/MSDTC và trả về gợi ý
++ *  - Đọc lại lượng sau chuyển và trả before/after
++ * Nếu mock mode thì dùng `mock.transferStock`.
++ */
+ async function transferStockDistributed(payload) {
+   if (isMockMode()) {
+     return mock.transferStock(payload);

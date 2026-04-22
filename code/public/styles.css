@@ -139,8 +139,9 @@ h2 {
 }
 
 .app-shell {
-  width: min(1360px, 96vw);
-  margin: 1.2rem auto;
+  width: calc(100vw - 2rem);
+  max-width: none;
+  margin: 1rem;
   display: grid;
   grid-template-columns: 280px 1fr;
   gap: 1rem;
@@ -323,7 +324,7 @@ select {
 
 .chart-card canvas {
   width: 100%;
-  max-height: 290px;
+  max-height: 240px;
 }
 
 .api-line {
@@ -520,8 +521,9 @@ select:focus {
 }
 
 .result-box {
-  background: #12202b;
-  color: #d8f2ff;
+  background: #f7fbff;
+  color: #1b3446;
+  border: 1px solid #d5e6f0;
   border-radius: 12px;
   padding: 1rem;
   overflow: auto;
@@ -535,8 +537,11 @@ select:focus {
   padding: 1.5rem;
   background: var(--card);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  width: 90%;
-  max-width: 800px;
+  width: min(94vw, 1040px);
+  max-width: 1040px;
+  max-height: 88vh;
+  overflow: auto;
+  overflow-x: hidden;
 }
 .modal::backdrop {
   background: rgba(10, 25, 40, 0.4);
@@ -572,6 +577,34 @@ select:focus {
 .close-modal-btn:hover {
   color: #a51e1e;
   background: var(--bg-hover, rgba(0,0,0,0.05));
+}
+
+.modal-grid {
+  grid-template-columns: 1fr;
+}
+
+.performance-modal-grid {
+  grid-template-columns: repeat(2, minmax(250px, 1fr));
+  gap: 0.8rem;
+}
+
+.modal .chart-card {
+  min-width: 0;
+}
+
+.modal .table-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.more-row {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.more-row .ghost {
+  padding: 0.5rem 0.9rem;
 }
 
 @keyframes rise {
