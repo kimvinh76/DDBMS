@@ -117,7 +117,45 @@ GO
 
 
 
+CREATE OR ALTER PROCEDURE dbo.usp_Central_XoaHangHoa
+    @MaSP VARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
 
+
+    IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
+        THROW 50000, N'Mã sản phẩm không được để trống!', 1;
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
+        THROW 50001, N'Không tìm thấy sản phẩm để xóa!', 1;
+
+ 
+    IF EXISTS (SELECT 1 FROM dbo.ChiTietHoaDon WHERE MaSP = @MaSP)
+    BEGIN
+        THROW 50002, N'Lỗi nghiệp vụ: Sản phẩm này đã phát sinh hóa đơn bán hàng, không thể xóa để bảo toàn dữ liệu lịch sử!', 1;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DELETE FROM dbo.TonKho WHERE MaSP = @MaSP;
+
+        
+        DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP;
+
+        COMMIT TRANSACTION;
+
+    
+        SELECT CAST(1 AS BIT) AS deleted, @MaSP AS productCode;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO 
 
 
 EXEC dbo.usp_Central_XoaHangHoa @MaSP = 'SP_TEST_01';
@@ -278,114 +316,124 @@ EXEC dbo.usp_Central_TaoHoaDon @MaHD = 'HD_CENTRAL_TEST_11 ', @MaNV = 'H001', @M
 GO
 
 
- 
-
-
-CREATE OR ALTER PROCEDURE dCREATE OR ALTER PROCEDURE dbo.usp_Central_DieuChuyenKho
+ CREATE OR ALTER PROCEDURE dbo.usp_Central_DieuChuyenKho
+    @TuChiNhanh VARCHAR(10),
+    @DenChiNhanh VARCHAR(10),
     @MaSP VARCHAR(50),
-    @SoLuong INT,
-    @FromBranch VARCHAR(10),
-    @ToBranch VARCHAR(10),
-    @FromServer NVARCHAR(50),
-    @FromDB NVARCHAR(50),
-    @ToServer NVARCHAR(50),
-    @ToDB NVARCHAR(50)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-    
-    DECLARE @SQL NVARCHAR(MAX);
-
-    BEGIN TRY
-        BEGIN DISTRIBUTED TRANSACTION;
-
-        SET @SQL = N'
-            UPDATE [' + @FromServer + '].[' + @FromDB + '].dbo.TonKho
-            SET SoLuongTon = SoLuongTon - @p_SoLuong
-            WHERE MaSP = @p_MaSP AND ChiNhanh = @p_FromBranch;
-
-            IF @@ROWCOUNT = 0
-                THROW 50001, ''Source row not updated on linked server'', 1;
-
-            UPDATE [' + @ToServer + '].[' + @ToDB + '].dbo.TonKho
-            SET SoLuongTon = SoLuongTon + @p_SoLuong
-            WHERE MaSP = @p_MaSP AND ChiNhanh = @p_ToBranch;
-
-            IF @@ROWCOUNT = 0
-                THROW 50002, ''Destination row not updated on linked server'', 1;
-        ';
-
-        EXEC sp_executesql @SQL,
-            N'@p_MaSP VARCHAR(50), @p_SoLuong INT, @p_FromBranch VARCHAR(10), @p_ToBranch VARCHAR(10)',
-            @p_MaSP = @MaSP, @p_SoLuong = @SoLuong, @p_FromBranch = @FromBranch, @p_ToBranch = @ToBranch;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0 OR @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
-END;
-GO
-CREATE OR ALTER PROCEDURE dbo.usp_Central_XoaHangHoa
-    @MaSP VARCHAR(50)
+    @SoLuongChuyen INT
 AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON; 
+	
+    SET @TuChiNhanh = LTRIM(RTRIM(ISNULL(@TuChiNhanh, '')));
+    SET @DenChiNhanh = LTRIM(RTRIM(ISNULL(@DenChiNhanh, '')));
+    SET @MaSP = LTRIM(RTRIM(ISNULL(@MaSP, '')));
+    --  Validate dữ liệu đầu vào
+    IF @TuChiNhanh NOT IN ('HUE', 'SAIGON', 'HANOI') OR @DenChiNhanh NOT IN ('HUE', 'SAIGON', 'HANOI')
+        THROW 50000, N'Chi nhánh điều chuyển không hợp lệ!', 1;
+
+    IF @TuChiNhanh = @DenChiNhanh
+        THROW 50000, N'Chi nhánh xuất và nhập không được trùng nhau!', 1;
 
     IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
         THROW 50000, N'Mã sản phẩm không được để trống!', 1;
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
-        THROW 50001, N'Không tìm thấy sản phẩm để xóa!', 1;
+    IF @SoLuongChuyen <= 0
+        THROW 50001, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
 
-    -- Kiểm tra hóa đơn trên toàn hệ thống (Central + Linked Servers)
-    IF EXISTS (SELECT 1 FROM dbo.ChiTietHoaDon WHERE MaSP = @MaSP)
-       OR EXISTS (SELECT 1 FROM [HUE_SERVER].[Store_H].dbo.ChiTietHoaDon WHERE MaSP = @MaSP)
-       OR EXISTS (SELECT 1 FROM [SG_SERVER].[Store_SG].dbo.ChiTietHoaDon WHERE MaSP = @MaSP)
-       OR EXISTS (SELECT 1 FROM [HN_SERVER].[Store_HN].dbo.ChiTietHoaDon WHERE MaSP = @MaSP)
-    BEGIN
-        THROW 50002, N'Lỗi nghiệp vụ: Sản phẩm này đã phát sinh hóa đơn bán hàng trên hệ thống, không thể xóa để bảo toàn dữ liệu lịch sử!', 1;
-    END
+    -- 2. Ánh xạ tên Linked Server và Database tương ứng
+    DECLARE @SrcServer NVARCHAR(50), @SrcDB NVARCHAR(50);
+    DECLARE @DestServer NVARCHAR(50), @DestDB NVARCHAR(50);
 
+    -- Máy chủ Nguồn (TuChiNhanh)
+    IF @TuChiNhanh = 'HUE' BEGIN SET @SrcServer = 'HUE_SERVER'; SET @SrcDB = 'Store_H'; END
+    ELSE IF @TuChiNhanh = 'SAIGON' BEGIN SET @SrcServer = 'SG_SERVER'; SET @SrcDB = 'Store_SG'; END
+    ELSE IF @TuChiNhanh = 'HANOI' BEGIN SET @SrcServer = 'HN_SERVER'; SET @SrcDB = 'Store_HN'; END
+
+    -- Máy chủ Đích (DenChiNhanh)
+    IF @DenChiNhanh = 'HUE' BEGIN SET @DestServer = 'HUE_SERVER'; SET @DestDB = 'Store_H'; END
+    ELSE IF @DenChiNhanh = 'SAIGON' BEGIN SET @DestServer = 'SG_SERVER'; SET @DestDB = 'Store_SG'; END
+    ELSE IF @DenChiNhanh = 'HANOI' BEGIN SET @DestServer = 'HN_SERVER'; SET @DestDB = 'Store_HN'; END
+
+    -- . Kiểm tra tồn kho tại máy chủ nguồn 
+    DECLARE @SQL_Check NVARCHAR(MAX);
+    DECLARE @TonKhoHienTai INT;
+    
+    SET @SQL_Check = N'SELECT @TonKhoOut = SoLuongTon FROM [' + @SrcServer + '].[' + @SrcDB + '].dbo.TonKho WHERE MaSP = @p_MaSP AND ChiNhanh = @p_ChiNhanh';
+    
+    EXEC sp_executesql 
+        @stmt = @SQL_Check, 
+        @params = N'@p_MaSP VARCHAR(50), @p_ChiNhanh VARCHAR(10), @TonKhoOut INT OUTPUT', 
+        @p_MaSP = @MaSP, 
+        @p_ChiNhanh = @TuChiNhanh, 
+        @TonKhoOut = @TonKhoHienTai OUTPUT;
+
+    IF @TonKhoHienTai IS NULL
+        THROW 50002, N'Sản phẩm không tồn tại ở chi nhánh xuất!', 1;
+
+    IF @TonKhoHienTai < @SoLuongChuyen
+        THROW 50003, N'Chi nhánh xuất không đủ số lượng để chuyển!', 1;
+
+    
     BEGIN TRY
         BEGIN DISTRIBUTED TRANSACTION;
 
-        -- Xóa trên các chi nhánh thông qua Linked Server (HUE, SAIGON, HANOI)
-        -- HUE
-        IF EXISTS (SELECT 1 FROM [HUE_SERVER].[Store_H].dbo.HangHoa WHERE MaSP = @MaSP)
-        BEGIN
-            DELETE FROM [HUE_SERVER].[Store_H].dbo.TonKho WHERE MaSP = @MaSP;
-            DELETE FROM [HUE_SERVER].[Store_H].dbo.HangHoa WHERE MaSP = @MaSP;
-        END
+        --  Trừ tồn kho chi nhánh xuất
+        DECLARE @SQL_UpdateSrc NVARCHAR(MAX);
+        SET @SQL_UpdateSrc = N'
+            UPDATE [' + @SrcServer + '].[' + @SrcDB + '].dbo.TonKho
+            SET SoLuongTon = SoLuongTon - @p_SoLuong
+            WHERE MaSP = @p_MaSP AND ChiNhanh = @p_ChiNhanh;
+        ';
+        EXEC sp_executesql @SQL_UpdateSrc, N'@p_MaSP VARCHAR(50), @p_ChiNhanh VARCHAR(10), @p_SoLuong INT', @MaSP, @TuChiNhanh, @SoLuongChuyen;
 
-        -- SAIGON
-        IF EXISTS (SELECT 1 FROM [SG_SERVER].[Store_SG].dbo.HangHoa WHERE MaSP = @MaSP)
-        BEGIN
-            DELETE FROM [SG_SERVER].[Store_SG].dbo.TonKho WHERE MaSP = @MaSP;
-            DELETE FROM [SG_SERVER].[Store_SG].dbo.HangHoa WHERE MaSP = @MaSP;
-        END
+        --  Cộng/Thêm tồn kho chi nhánh nhập
+        DECLARE @SQL_UpdateDest NVARCHAR(MAX);
+        SET @SQL_UpdateDest = N'
+            UPDATE [' + @DestServer + '].[' + @DestDB + '].dbo.TonKho
+            SET SoLuongTon = SoLuongTon + @p_SoLuong
+            WHERE MaSP = @p_MaSP AND ChiNhanh = @p_ChiNhanh;
 
-        -- HANOI
-        IF EXISTS (SELECT 1 FROM [HN_SERVER].[Store_HN].dbo.HangHoa WHERE MaSP = @MaSP)
-        BEGIN
-            DELETE FROM [HN_SERVER].[Store_HN].dbo.TonKho WHERE MaSP = @MaSP;
-            DELETE FROM [HN_SERVER].[Store_HN].dbo.HangHoa WHERE MaSP = @MaSP;
-        END
-
-        -- Xóa trên CENTRAL
-        DELETE FROM dbo.TonKho WHERE MaSP = @MaSP;
-        DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP;
+            -- Nếu đích chưa có sản phẩm này, tự động tạo mới
+            IF @@ROWCOUNT = 0
+            BEGIN
+                INSERT INTO [' + @DestServer + '].[' + @DestDB + '].dbo.TonKho (MaSP, SoLuongTon, ChiNhanh)
+                VALUES (@p_MaSP, @p_SoLuong, @p_ChiNhanh);
+            END
+        ';
+        EXEC sp_executesql @SQL_UpdateDest, N'@p_MaSP VARCHAR(50), @p_ChiNhanh VARCHAR(10), @p_SoLuong INT', @MaSP, @DenChiNhanh, @SoLuongChuyen;
 
         COMMIT TRANSACTION;
-
-        SELECT CAST(1 AS BIT) AS deleted, @MaSP AS productCode;
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
         THROW;
     END CATCH
 END;
 GO
+
+
+
+SELECT ChiNhanh, MaSP, SoLuongTon AS TonKho_TruocKhiChuyen 
+FROM dbo.TonKho 
+WHERE MaSP = 'MI_GOI' AND ChiNhanh IN ('HUE', 'SAIGON')
+ORDER BY ChiNhanh;
+
+
+EXEC dbo.usp_Central_DieuChuyenKho 
+    @TuChiNhanh = 'HUE', 
+    @DenChiNhanh = 'SAIGON', 
+    @MaSP = 'MI_GOI', 
+    @SoLuongChuyen = 1;
+
+
+
+SELECT ChiNhanh, MaSP, SoLuongTon AS TonKho_SauKhiChuyen 
+FROM dbo.TonKho 
+WHERE MaSP = 'MI_GOI' AND ChiNhanh IN ('HUE', 'SAIGON')
+ORDER BY ChiNhanh;
+GO
+
+
+

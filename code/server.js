@@ -15,8 +15,7 @@ const {
   deleteEmployee,
   listInvoicesByBranch,
   createInvoice,
-  updateInvoice,
-  deleteInvoice,
+
   listAllEmployeesFromCentral,
   getNationalRevenue,
   getCentralAnalyticsOverview,
@@ -39,15 +38,6 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use((req, _res, next) => {
-  const readMode = String(process.env.READONLY_USE_SP || "0") === "1" ? "SP" : "DIRECT";
-  const employeeWriteMode = String(process.env.EMPLOYEE_WRITE_USE_SP || "0") === "1" ? "SP" : "DIRECT";
-  const inventoryMode = String(process.env.INVENTORY_IMPORT_USE_SP || "0") === "1" ? "SP" : "DIRECT";
-  const invoiceMode = String(process.env.INVOICE_CREATE_USE_SP || "0") === "1" ? "SP" : "DIRECT";
-  const invoiceBranches = String(process.env.INVOICE_CREATE_SP_BRANCHES || "")
-    .split(",")
-    .map((item) => item.trim().toUpperCase())
-    .filter(Boolean)
-    .join(",");
 
 
 
@@ -269,65 +259,7 @@ app.post("/api/invoices", async (req, res) => {
   }
 });
 
-app.put("/api/invoices/:invoiceId", async (req, res) => {
-  try {
-    const branch = normalizeBranch(req.query.branch);
-    const invoiceId = String(req.params.invoiceId || "").trim();
-    if (!branch || isCentralBranch(branch)) {
-      return res
-        .status(400)
-        .json({
-          message: "branch is required and must be HUE, SAIGON, or HANOI",
-        });
-    }
-    if (!invoiceId) {
-      return res.status(400).json({ message: "invoiceId is required" });
-    }
 
-    const payload = {
-      productCode: req.body.productCode
-        ? String(req.body.productCode).trim()
-        : "",
-      employeeId: req.body.employeeId
-        ? String(req.body.employeeId).trim()
-        : "",
-      quantity: Number(req.body.quantity || 0),
-      totalAmount: Number(req.body.totalAmount || 0),
-      productName: req.body.productName
-        ? String(req.body.productName).trim()
-        : "",
-      unitPrice: Number(req.body.unitPrice || 0),
-      note: req.body.note !== undefined ? String(req.body.note).trim() : null,
-    };
-
-    const data = await updateInvoice(branch, invoiceId, payload);
-    return res.json({ message: "Invoice updated", data });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
-});
-
-app.delete("/api/invoices/:invoiceId", async (req, res) => {
-  try {
-    const branch = normalizeBranch(req.query.branch);
-    const invoiceId = String(req.params.invoiceId || "").trim();
-    if (!branch || isCentralBranch(branch)) {
-      return res
-        .status(400)
-        .json({
-          message: "branch is required and must be HUE, SAIGON, or HANOI",
-        });
-    }
-    if (!invoiceId) {
-      return res.status(400).json({ message: "invoiceId is required" });
-    }
-
-    const data = await deleteInvoice(branch, invoiceId);
-    return res.json({ message: "Invoice deleted", data });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
-});
 
 app.get("/api/branch-dashboard", async (req, res) => {
   try {
@@ -504,12 +436,7 @@ app.get("/api/products/:productCode", async (req, res) => {
   }
 });
 
-app.post("/api/inventory", async (req, res) => {
-  return res.status(405).json({
-    message:
-      "Create inventory is disabled. Inventory rows are auto-created with quantity 0 when product is created at Central.",
-  });
-});
+
 
 app.put("/api/inventory/:productCode", async (req, res) => {
   try {
@@ -535,11 +462,6 @@ app.put("/api/inventory/:productCode", async (req, res) => {
   }
 });
 
-app.delete("/api/inventory/:productCode", async (req, res) => {
-  return res.status(405).json({
-    message: "Delete inventory is disabled. Use product management at Central instead.",
-  });
-});
 
 app.post("/api/transfer-stock", async (req, res) => {
   try {
