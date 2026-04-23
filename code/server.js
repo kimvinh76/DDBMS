@@ -49,11 +49,7 @@ app.use((req, _res, next) => {
     .filter(Boolean)
     .join(",");
 
-  console.log(
-    `[MODE] ${new Date().toISOString()} ${req.method} ${req.originalUrl} `
-      + `READ=${readMode} EMP_WRITE=${employeeWriteMode} INV_UPDATE=${inventoryMode} `
-      + `INVOICE_CREATE=${invoiceMode} INVOICE_BRANCHES=[${invoiceBranches}]`,
-  );
+
 
   next();
 });
@@ -433,7 +429,7 @@ app.get("/api/products", async (req, res) => {
 
 app.post("/api/products", async (req, res) => {
   try {
-    const branch = normalizeBranch(req.body.branch || req.query.branch);
+    const branch = normalizeBranch(req.body?.branch || req.query?.branch);
     if (!branch || !isCentralBranch(branch)) {
       return res.status(403).json({ message: "Only CENTRAL can create products" });
     }
@@ -454,7 +450,7 @@ app.post("/api/products", async (req, res) => {
 
 app.put("/api/products/:productCode", async (req, res) => {
   try {
-    const branch = normalizeBranch(req.body.branch || req.query.branch);
+    const branch = normalizeBranch(req.body?.branch || req.query?.branch);
     if (!branch || !isCentralBranch(branch)) {
       return res.status(403).json({ message: "Only CENTRAL can update products" });
     }
@@ -472,7 +468,7 @@ app.put("/api/products/:productCode", async (req, res) => {
 
 app.delete("/api/products/:productCode", async (req, res) => {
   try {
-    const branch = normalizeBranch(req.body.branch || req.query.branch);
+    const branch = normalizeBranch(req.body?.branch || req.query?.branch);
     if (!branch || !isCentralBranch(branch)) {
       return res.status(403).json({ message: "Only CENTRAL can delete products" });
     }

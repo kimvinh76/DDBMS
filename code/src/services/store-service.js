@@ -70,6 +70,9 @@ function centralProcNames() {
     createEmployee: "dbo.usp_Central_ThemNhanVien",
     updateEmployee: "dbo.usp_Central_CapNhatNhanVien",
     deleteEmployee: "dbo.usp_Central_XoaNhanVien",
+    createProduct: "dbo.usp_Central_ThemHangHoaMoi",
+    updateProduct: "dbo.usp_Central_CapNhatHangHoa",
+    deleteProduct: "dbo.usp_Central_XoaHangHoa",
   };
 }
 
@@ -1153,7 +1156,7 @@ async function getNationalRevenue() {
     nationalRevenue,
   };
 }
-
+// gọi các proc tổng hợp analytics từ CENTRAL, trả về object tổng hợp gồm doanh thu theo ngày, theo tuần, top nhân viên, top sản phẩm, so sánh doanh thu tuần.
 async function getCentralAnalyticsOverview(sourceBranch) {
   if (isMockMode()) {
     return {
@@ -1338,61 +1341,21 @@ async function createProduct(payload) {
     return mock.createProduct(payload);
   }
 
-  const linked = linkedServerNames();
-  const branchTargets = [
-    { code: "HUE", server: linked.HUE, db: dbNameByBranch("HUE") },
-    { code: "SAIGON", server: linked.SAIGON, db: dbNameByBranch("SAIGON") },
-    { code: "HANOI", server: linked.HANOI, db: dbNameByBranch("HANOI") },
-  ];
-
   const pool = await getPool("CENTRAL");
+  const centralProcs = centralProcNames();
   const code = String(payload.productCode || "").trim();
   const name = String(payload.productName || code).trim();
   const price = Number(payload.unitPrice || 0);
 
-  // Use Central directly, or let replication flow to branches.
+  // CHỈ CẦN GỌI ĐÚNG SP Ở CENTRAL. REPLICATION SẼ TỰ ĐẨY XUỐNG CHI NHÁNH!
   await pool.request()
-    .input('MaSP', sql.VarChar(50), code)
-    .input('TenHang', sql.NVarChar(100), name)
-    .input('Gia', sql.Decimal(10, 2), price)
-    .query(`
-      IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
-      BEGIN
-        IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
-          INSERT INTO dbo.HangHoa (MaSP, TenHang, Gia) VALUES (@MaSP, @TenHang, @Gia);
-        ELSE
-          THROW 50000, 'Product already exists', 1;
-      END
-    `);
-
-  for (const target of branchTargets) {
-    await pool.request()
-      .input("MaSP", sql.VarChar(50), code)
-      .input("TenHang", sql.NVarChar(100), name)
-      .input("Gia", sql.Decimal(10, 2), price)
-      .input("ChiNhanh", sql.VarChar(10), target.code)
-      .query(`
-        IF NOT EXISTS (SELECT 1 FROM [${target.server}].[${target.db}].dbo.HangHoa WHERE MaSP = @MaSP)
-        BEGIN
-          INSERT INTO [${target.server}].[${target.db}].dbo.HangHoa (MaSP, TenHang, Gia)
-          VALUES (@MaSP, @TenHang, @Gia);
-        END
-
-        IF NOT EXISTS (
-          SELECT 1
-          FROM [${target.server}].[${target.db}].dbo.TonKho
-          WHERE MaSP = @MaSP AND ChiNhanh = @ChiNhanh
-        )
-        BEGIN
-          INSERT INTO [${target.server}].[${target.db}].dbo.TonKho (MaSP, SoLuongTon, ChiNhanh)
-          VALUES (@MaSP, 0, @ChiNhanh);
-        END
-      `);
-  }
+    .input("MaSP", sql.VarChar(50), code)
+    .input("TenHang", sql.NVarChar(100), name)
+    .input("Gia", sql.Decimal(10, 2), price)
+    .execute(centralProcs.createProduct);
 
   return { productCode: code, productName: name, unitPrice: price };
 }
-
 /*
  * Cập nhật thông tin sản phẩm ở CENTRAL (`HangHoa`).
  * Truy vấn: UPDATE dbo.HangHoa SET ... WHERE MaSP = @MaSP
@@ -1403,53 +1366,74 @@ async function updateProduct(productCode, payload) {
     return mock.updateProduct(productCode, payload);
   }
   const pool = await getPool("CENTRAL");
+  const centralProcs = centralProcNames();
   const code = String(productCode || "").trim();
-  
-  const req = pool.request().input('MaSP', sql.VarChar(50), code);
-  let sets = [];
-  if (payload.productName !== undefined) {
-    req.input('TenHang', sql.NVarChar(100), String(payload.productName).trim());
-    sets.push("TenHang = @TenHang");
-  }
-  if (payload.unitPrice !== undefined) {
-    req.input('Gia', sql.Decimal(10, 2), Number(payload.unitPrice || 0));
-    sets.push("Gia = @Gia");
-  }
-  
-  if (sets.length > 0) {
-    await req.query(`
-      IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
-      BEGIN
-        UPDATE dbo.HangHoa SET ${sets.join(', ')} WHERE MaSP = @MaSP;
-      END
-    `);
-  }
+
+  await pool.request()
+    .input("MaSP", sql.VarChar(50), code)
+    .input(
+      "TenHang",
+      sql.NVarChar(100),
+      payload.productName !== undefined ? String(payload.productName).trim() : null,
+    )
+    .input(
+      "Gia",
+      sql.Decimal(10, 2),
+      payload.unitPrice !== undefined ? Number(payload.unitPrice || 0) : null,
+    )
+    .execute(centralProcs.updateProduct);
+
   return { updated: true, productCode: code };
 }
 
 /*
  * Xóa sản phẩm khỏi CENTRAL (`HangHoa`).
  * Truy vấn: DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP
- * Lưu ý: không tự động xóa tồn kho trên các chi nhánh. Nếu mock mode thì dùng `mock.deleteProduct`.
+  * Đồng thời xóa sản phẩm khỏi tất cả chi nhánh qua linked servers:
  */
 async function deleteProduct(productCode) {
   if (isMockMode()) {
     return mock.deleteProduct(productCode);
   }
+  
   const pool = await getPool("CENTRAL");
+  const centralProcs = centralProcNames();
   const code = String(productCode || "").trim();
 
+  // Khai báo chính xác tên Linked Server (theo ảnh SSMS) và tên Database của 3 miền
+  const branchTargets = [
+    { code: "HUE", server: "HUE_SERVER", db: "Store_H" },
+    { code: "SAIGON", server: "SG_SERVER", db: "Store_SG" },
+    { code: "HANOI", server: "HN_SERVER", db: "Store_HN" }
+  ];
+
+  
+  for (const target of branchTargets) {
+    await pool.request()
+      .input("MaSP", sql.VarChar(50), code)
+      .query(`
+     
+        IF EXISTS (SELECT 1 FROM [${target.server}].[${target.db}].dbo.ChiTietHoaDon WHERE MaSP = @MaSP)
+        BEGIN
+            THROW 50002, N'Lỗi: Sản phẩm đã phát sinh hóa đơn tại chi nhánh ${target.code}, không thể xóa!', 1;
+        END
+
+        
+        IF EXISTS (SELECT 1 FROM [${target.server}].[${target.db}].dbo.HangHoa WHERE MaSP = @MaSP)
+        BEGIN
+          DELETE FROM [${target.server}].[${target.db}].dbo.TonKho WHERE MaSP = @MaSP;
+          DELETE FROM [${target.server}].[${target.db}].dbo.HangHoa WHERE MaSP = @MaSP;
+        END
+      `);
+  }
+
+ 
   await pool.request()
-    .input('MaSP', sql.VarChar(50), code)
-    .query(`
-      IF OBJECT_ID('dbo.HangHoa', 'U') IS NOT NULL
-      BEGIN
-        DELETE FROM dbo.HangHoa WHERE MaSP = @MaSP;
-      END
-    `);
+    .input("MaSP", sql.VarChar(50), code)
+    .execute(centralProcs.deleteProduct); 
+
   return { deleted: true, productCode: code };
 }
-
 /*
  * Lấy thông tin sản phẩm (MaSP, TenHang, Gia) từ `HangHoa` của chi nhánh.
  * Truy vấn: SELECT TOP 1 MaSP, TenHang, Gia FROM HangHoa WHERE MaSP = @MaSP
@@ -1703,6 +1687,7 @@ async function getBranchDashboard(branch) {
     // SP mode (Phase 1+): dashboard branch dùng proc local thay cho query trực tiếp.
     const procs = localProcNamesByBranch();
     const [summaryRs, revenueRs, topStockRs] = await Promise.all([
+      //gọi SP tổng hợp summary (employeeCount, invoiceCount, revenue, totalStockUnits, lowStockProducts)
       pool.request().execute(procs.dashboardSummary),
       pool.request().execute(procs.dashboardRevenue7d),
       pool.request().input("TopN", sql.Int, 8).execute(procs.dashboardTopStock),

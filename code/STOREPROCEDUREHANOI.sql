@@ -1,13 +1,6 @@
-USE Store_SG;
+﻿USE Store_HN;
 GO
 
-/*
-  BRANCH DEPLOY SCRIPT (SAIGON)
-  - Idempotent (CREATE OR ALTER)
-  - Local procedures are branch-locked
-  - Global report views/procs via linked servers
-  - No test EXEC side effects
-*/
 
 /* ===== PHẦN 1: VIEW TOÀN CỤC ===== */
 CREATE OR ALTER VIEW dbo.v_NhanVien_ToanQuoc AS
@@ -15,7 +8,7 @@ SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM dbo.NhanVien
 UNION ALL
 SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM [LINK_HUE].[Store_H].dbo.NhanVien
 UNION ALL
-SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM [LINK_HANOI].[Store_HN].dbo.NhanVien;
+SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM [LINK_SAIGON].[Store_SG].dbo.NhanVien;
 GO
 
 CREATE OR ALTER VIEW dbo.v_HoaDonChiTiet_ToanQuoc AS
@@ -31,8 +24,8 @@ JOIN [LINK_HUE].[Store_H].dbo.ChiTietHoaDon ct ON hd.MaHD = ct.MaHD
 UNION ALL
 SELECT hd.MaHD, hd.NgayTao, hd.ChiNhanh, hd.MaNV, ct.MaSP, ct.SoLuong, ct.DonGia,
        CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2)) AS ThanhTien
-FROM [LINK_HANOI].[Store_HN].dbo.HoaDon hd
-JOIN [LINK_HANOI].[Store_HN].dbo.ChiTietHoaDon ct ON hd.MaHD = ct.MaHD;
+FROM [LINK_SAIGON].[Store_SG].dbo.HoaDon hd
+JOIN [LINK_SAIGON].[Store_SG].dbo.ChiTietHoaDon ct ON hd.MaHD = ct.MaHD;
 GO
 
 CREATE OR ALTER VIEW dbo.v_TonKho_ToanQuoc AS
@@ -40,7 +33,7 @@ SELECT MaSP, SoLuongTon, ChiNhanh FROM dbo.TonKho
 UNION ALL
 SELECT MaSP, SoLuongTon, ChiNhanh FROM [LINK_HUE].[Store_H].dbo.TonKho
 UNION ALL
-SELECT MaSP, SoLuongTon, ChiNhanh FROM [LINK_HANOI].[Store_HN].dbo.TonKho;
+SELECT MaSP, SoLuongTon, ChiNhanh FROM [LINK_SAIGON].[Store_SG].dbo.TonKho;
 GO
 
 /* ===== PHẦN 2: PROC BÁO CÁO TOÀN CỤC ===== */
@@ -66,7 +59,6 @@ BEGIN
     ORDER BY Ngay DESC, ChiNhanh;
 END;
 GO
-
 
 CREATE OR ALTER PROCEDURE dbo.usp_DoanhThuVaSoDon_TheoTuan
 AS
@@ -168,7 +160,7 @@ BEGIN
 END;
 GO
 
-/* ===== PHẦN 3: PROC NGHIỆP VỤ CỤC BỘ (KHỚP BACKEND DẦN) ===== */
+/* ===== PHẦN 3: PROC NGHIỆP VỤ CỤC BỘ  ===== */
 CREATE OR ALTER PROCEDURE dbo.usp_Local_DanhSachNhanVien
 AS
 BEGIN
@@ -198,7 +190,7 @@ BEGIN
         THROW 50001, N'Mã nhân viên đã tồn tại!', 1;
 
     INSERT INTO dbo.NhanVien (MaNV, HoTen, ChucVu, ChiNhanh)
-    VALUES (@MaNV, @HoTen, @ChucVu, 'SAIGON');
+    VALUES (@MaNV, @HoTen, @ChucVu, 'HANOI');
 
     SELECT TOP 1 * FROM dbo.NhanVien WHERE MaNV = @MaNV;
 END;
@@ -218,7 +210,7 @@ BEGIN
     UPDATE dbo.NhanVien
     SET HoTen = COALESCE(NULLIF(LTRIM(RTRIM(@HoTen)), ''), HoTen),
         ChucVu = COALESCE(NULLIF(LTRIM(RTRIM(@ChucVu)), ''), ChucVu)
-    WHERE MaNV = @MaNV AND ChiNhanh = 'SAIGON';
+    WHERE MaNV = @MaNV AND ChiNhanh = 'HANOI';
 
     IF @@ROWCOUNT = 0
         THROW 50001, N'Không tìm thấy nhân viên để cập nhật!', 1;
@@ -236,11 +228,11 @@ BEGIN
     IF NULLIF(LTRIM(RTRIM(@MaNV)), '') IS NULL
         THROW 50000, N'Mã nhân viên không được để trống!', 1;
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'SAIGON')
+    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'HANOI')
         THROW 50001, N'Không tìm thấy nhân viên để xóa!', 1;
 
     DELETE FROM dbo.NhanVien
-    WHERE MaNV = @MaNV AND ChiNhanh = 'SAIGON';
+    WHERE MaNV = @MaNV AND ChiNhanh = 'HANOI';
 
     SELECT CAST(1 AS BIT) AS deleted, @MaNV AS MaNV;
 END;
@@ -265,7 +257,7 @@ BEGIN
         FROM dbo.HoaDon hd
         LEFT JOIN dbo.ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
         LEFT JOIN dbo.NhanVien nv ON nv.MaNV = hd.MaNV
-        WHERE hd.ChiNhanh = 'SAIGON'
+        WHERE hd.ChiNhanh = 'HANOI'
         GROUP BY hd.MaHD, hd.GhiChu, hd.NgayTao, hd.ChiNhanh, hd.MaNV
         ORDER BY hd.NgayTao DESC;
     END
@@ -282,7 +274,7 @@ BEGIN
             NULL AS HoTenNhanVien
         FROM dbo.HoaDon hd
         LEFT JOIN dbo.ChiTietHoaDon ctd ON ctd.MaHD = hd.MaHD
-        WHERE hd.ChiNhanh = 'SAIGON'
+        WHERE hd.ChiNhanh = 'HANOI'
         GROUP BY hd.MaHD, hd.GhiChu, hd.NgayTao, hd.ChiNhanh
         ORDER BY hd.NgayTao DESC;
     END
@@ -306,7 +298,7 @@ BEGIN
     LEFT JOIN dbo.HangHoa hh ON hh.MaSP = ctd.MaSP
     INNER JOIN dbo.HoaDon hd ON hd.MaHD = ctd.MaHD
     WHERE ctd.MaHD = @MaHD
-      AND hd.ChiNhanh = 'SAIGON';
+      AND hd.ChiNhanh = 'HANOI';
 END;
 GO
 
@@ -322,8 +314,8 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    IF @ChiNhanhLap <> 'SAIGON'
-        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''SAIGON''.', 1;
+    IF @ChiNhanhLap <> 'HANOI'
+        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''HANOI''.', 1;
 
     IF NULLIF(LTRIM(RTRIM(@MaHD)), '') IS NULL
         THROW 50000, N'Mã hóa đơn không được để trống!', 1;
@@ -343,25 +335,25 @@ BEGIN
     IF @DonGia IS NULL OR @DonGia <= 0
         THROW 50001, N'Không tìm thấy giá sản phẩm hợp lệ trong bảng HangHoa!', 1;
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'SAIGON')
-        THROW 50002, N'Nhân viên không tồn tại ở chi nhánh SAIGON!', 1;
+    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'HANOI')
+        THROW 50002, N'Nhân viên không tồn tại ở chi nhánh HANOI!', 1;
 
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        IF (SELECT SoLuongTon FROM dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON') < @SoLuongMua
+        IF (SELECT SoLuongTon FROM dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = 'HANOI') < @SoLuongMua
             THROW 50003, N'Kho cục bộ không đủ số lượng để bán!', 1;
 
         IF NOT EXISTS (SELECT 1 FROM dbo.HoaDon WHERE MaHD = @MaHD)
             INSERT INTO dbo.HoaDon (MaHD, GhiChu, ChiNhanh, MaNV)
-            VALUES (@MaHD, @GhiChu, 'SAIGON', @MaNV);
+            VALUES (@MaHD, @GhiChu, 'HANOI', @MaNV);
 
         INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
         VALUES (@MaHD, @MaSP, @SoLuongMua, @DonGia);
 
         UPDATE dbo.TonKho
         SET SoLuongTon = SoLuongTon - @SoLuongMua
-        WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON';
+        WHERE MaSP = @MaSP AND ChiNhanh = 'HANOI';
 
         COMMIT TRANSACTION;
     END TRY
@@ -383,8 +375,8 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    IF @ChiNhanhLap <> 'SAIGON'
-        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''SAIGON''.', 1;
+    IF @ChiNhanhLap <> 'HANOI'
+        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''HANOI''.', 1;
 
     IF NULLIF(LTRIM(RTRIM(@MaHD)), '') IS NULL
         THROW 50000, N'Mã hóa đơn không được để trống!', 1;
@@ -395,8 +387,8 @@ BEGIN
     IF NULLIF(LTRIM(RTRIM(@ItemsJson)), '') IS NULL
         THROW 50000, N'Danh sách món hàng không được để trống!', 1;
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'SAIGON')
-        THROW 50001, N'Nhân viên không tồn tại ở chi nhánh SAIGON!', 1;
+    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'HANOI')
+        THROW 50001, N'Nhân viên không tồn tại ở chi nhánh HANOI!', 1;
 
     DECLARE @Items TABLE (
         MaSP VARCHAR(50) NOT NULL,
@@ -448,7 +440,7 @@ BEGIN
         )
         SELECT 1
         FROM Agg a
-        LEFT JOIN dbo.TonKho t ON t.MaSP = a.MaSP AND t.ChiNhanh = 'SAIGON'
+        LEFT JOIN dbo.TonKho t ON t.MaSP = a.MaSP AND t.ChiNhanh = 'HANOI'
         WHERE t.SoLuongTon IS NULL OR t.SoLuongTon < a.SoLuong;
 
         IF @@ROWCOUNT > 0
@@ -456,7 +448,7 @@ BEGIN
 
         IF NOT EXISTS (SELECT 1 FROM dbo.HoaDon WHERE MaHD = @MaHD)
             INSERT INTO dbo.HoaDon (MaHD, GhiChu, ChiNhanh, MaNV)
-            VALUES (@MaHD, @GhiChu, 'SAIGON', @MaNV);
+            VALUES (@MaHD, @GhiChu, 'HANOI', @MaNV);
 
         ;WITH Agg AS (
             SELECT MaSP, SUM(SoLuong) AS SoLuong, MAX(DonGia) AS DonGia
@@ -481,7 +473,7 @@ BEGIN
         SET t.SoLuongTon = t.SoLuongTon - a.SoLuong
         FROM dbo.TonKho t
         JOIN Agg a ON a.MaSP = t.MaSP
-        WHERE t.ChiNhanh = 'SAIGON';
+        WHERE t.ChiNhanh = 'HANOI';
 
         COMMIT TRANSACTION;
     END TRY
@@ -499,7 +491,7 @@ BEGIN
 
     SELECT MaSP, SoLuongTon
     FROM dbo.TonKho
-    WHERE ChiNhanh = 'SAIGON'
+    WHERE ChiNhanh = 'HANOI'
     ORDER BY MaSP;
 END;
 GO
@@ -515,48 +507,11 @@ BEGIN
 
     SELECT TOP 1 MaSP, SoLuongTon
     FROM dbo.TonKho
-    WHERE ChiNhanh = 'SAIGON' AND MaSP = @MaSP;
+    WHERE ChiNhanh = 'HANOI' AND MaSP = @MaSP;
 END;
 GO
 
-CREATE OR ALTER PROCEDURE dbo.usp_Local_NhapKho
-    @MaSP VARCHAR(50),
-    @SoLuongNhap INT,
-    @ChiNhanhLap VARCHAR(10)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
 
-    IF @ChiNhanhLap <> 'SAIGON'
-        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''SAIGON''.', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
-        THROW 50000, N'Mã sản phẩm không được để trống!', 1;
-
-    IF @SoLuongNhap <= 0
-        THROW 50000, N'Số lượng nhập kho phải lớn hơn 0!', 1;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        IF NOT EXISTS (
-            SELECT 1 FROM dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON'
-        )
-            THROW 50001, N'Sản phẩm không tồn tại trong kho của chi nhánh này!', 1;
-
-        UPDATE dbo.TonKho
-        SET SoLuongTon = SoLuongTon + @SoLuongNhap
-        WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON';
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
-END;
-GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Local_DanhSachHangHoa
 AS
@@ -587,6 +542,7 @@ BEGIN
 END;
 GO
 
+
 CREATE OR ALTER PROCEDURE dbo.usp_Local_CapNhatTonKhoTongQuat
     @MaSP VARCHAR(50),
     @SoLuongTonMoi INT,
@@ -596,8 +552,8 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    IF @ChiNhanhLap <> 'SAIGON'
-        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''SAIGON''.', 1;
+    IF @ChiNhanhLap <> 'HANOI'
+        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''HANOI''.', 1;
 
     IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
         THROW 50000, N'Mã sản phẩm không được để trống!', 1;
@@ -608,84 +564,21 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM dbo.TonKho
-        WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON'
+        WHERE MaSP = @MaSP AND ChiNhanh = 'HANOI'
     )
         THROW 50001, N'Sản phẩm không tồn tại trong kho của chi nhánh này!', 1;
 
     UPDATE dbo.TonKho
     SET SoLuongTon = @SoLuongTonMoi
-    WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON';
+    WHERE MaSP = @MaSP AND ChiNhanh = 'HANOI';
 
     SELECT TOP 1 MaSP, SoLuongTon
     FROM dbo.TonKho
-    WHERE MaSP = @MaSP AND ChiNhanh = 'SAIGON';
+    WHERE MaSP = @MaSP AND ChiNhanh = 'HANOI';
 END;
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardTongQuan
 AS
 BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        (SELECT COUNT(1) FROM dbo.NhanVien WHERE ChiNhanh = 'SAIGON') AS employeeCount,
-        (SELECT COUNT(1) FROM dbo.HoaDon WHERE ChiNhanh = 'SAIGON') AS invoiceCount,
-        (
-            SELECT ISNULL(SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))), 0)
-            FROM dbo.HoaDon hd
-            INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
-            WHERE hd.ChiNhanh = 'SAIGON'
-        ) AS revenue,
-        (SELECT ISNULL(SUM(SoLuongTon), 0) FROM dbo.TonKho WHERE ChiNhanh = 'SAIGON') AS totalStockUnits,
-        (
-            SELECT ISNULL(SUM(CASE WHEN SoLuongTon < 50 THEN 1 ELSE 0 END), 0)
-            FROM dbo.TonKho
-            WHERE ChiNhanh = 'SAIGON'
-        ) AS lowStockProducts;
-END;
-GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardDoanhThu7Ngay
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    ;WITH Last7Days AS (
-        SELECT CAST(DATEADD(DAY, v.n * -1, CAST(GETDATE() AS DATE)) AS DATE) AS Ngay
-        FROM (VALUES (0), (1), (2), (3), (4), (5), (6)) v(n)
-    )
-    SELECT
-        d.Ngay,
-        ISNULL(SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))), 0) AS DoanhThu
-    FROM Last7Days d
-    LEFT JOIN dbo.HoaDon hd
-      ON CAST(hd.NgayTao AS DATE) = d.Ngay
-     AND hd.ChiNhanh = 'SAIGON'
-    LEFT JOIN dbo.ChiTietHoaDon ct
-      ON ct.MaHD = hd.MaHD
-    GROUP BY d.Ngay
-    ORDER BY d.Ngay;
-END;
-GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardTopTonKho
-    @TopN INT = 8
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF @TopN IS NULL OR @TopN <= 0
-        SET @TopN = 8;
-
-    SELECT TOP (@TopN)
-        tk.MaSP,
-        hh.TenHang,
-        tk.SoLuongTon
-    FROM dbo.TonKho tk
-    LEFT JOIN dbo.HangHoa hh ON hh.MaSP = tk.MaSP
-    WHERE tk.ChiNhanh = 'SAIGON'
-    ORDER BY tk.SoLuongTon DESC, tk.MaSP;
-END;
-GO
-
-
+    SET NOCOUN
