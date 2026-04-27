@@ -34,18 +34,14 @@ function localProcNamesByBranch() {
     dashboardTopStock: "dbo.usp_Local_DashboardTopTonKho",
   };
 }
-// Tên proc ở CENTRAL để thao tác nhân viên và hàng hóa 
+// Tên proc ở CENTRAL để thao tác hàng hóa 
 function centralProcNames() {
   return {
-    createEmployee: "dbo.usp_Central_ThemNhanVien",
-    updateEmployee: "dbo.usp_Central_CapNhatNhanVien",
-    deleteEmployee: "dbo.usp_Central_XoaNhanVien",
     createProduct: "dbo.usp_Central_ThemHangHoaMoi",
     updateProduct: "dbo.usp_Central_CapNhatHangHoa",
     deleteProduct: "dbo.usp_Central_XoaHangHoa",
   };
 }
-
 function normalizeAnalyticsBranch(branch) {
   const normalized = String(branch || "").trim().toUpperCase();
   if (["HUE", "SAIGON", "HANOI"].includes(normalized)) {
@@ -55,20 +51,29 @@ function normalizeAnalyticsBranch(branch) {
 }
 
 function sourceInfoByBranch(branch) {
+  // 1. Lấy danh sách tên Linked Server (vd: HUE_SERVER, SG_SERVER...)
   const linked = linkedServerNames();
+  
+  // 2. Trả về đúng tên Server và Database của chi nhánh đó
   if (branch === "HUE") {
-    return { server: linked.HUE, db: dbNameByBranch("HUE") };
+    return { server: linked.HUE, db: dbNameByBranch("HUE") };     // vd: { server: 'HUE_SERVER', db: 'Store_H' }
   }
   if (branch === "SAIGON") {
-    return { server: linked.SAIGON, db: dbNameByBranch("SAIGON") };
+    return { server: linked.SAIGON, db: dbNameByBranch("SAIGON") }; // vd: { server: 'SG_SERVER', db: 'Store_SG' }
   }
+  
+  
   return { server: linked.HANOI, db: dbNameByBranch("HANOI") };
 }
 
-async function executeAnalyticsProcFromCentral(pool, sourceBranch, procName) {
-  const source = sourceInfoByBranch(sourceBranch);
-  const query = `EXEC [${source.server}].[${source.db}].dbo.${procName};`;
-  const rs = await pool.request().query(query);
+
+async function executeAnalyticsProcOnBranch(pool, procName) {
+  const rs = await pool.request().execute(`dbo.${procName}`);
+  return rs.recordset || [];
+}
+
+async function executeAnalyticsProcOnCentral(pool, procName) {
+  const rs = await pool.request().execute(`dbo.${procName}`);
   return rs.recordset || [];
 }
 
@@ -88,40 +93,34 @@ async function hasHoaDonEmployeeColumnWithPool(pool) {
 
 async function listEmployeesByBranch(branch) {
   if (isMockMode()) return mock.listEmployeesByBranch(branch);
-
+// Kết nối tới đúng Database của chi nhánh (HUE, SAIGON, hoặc HANOI)
   const pool = await getPool(branch);
   const procs = localProcNamesByBranch();
-  
-  // Gọi thẳng Proc, bỏ if và bỏ query SELECT inline
+  // Thực thi Store Procedure tại chi nhánh để lấy danh sách nhân viên nội bộ
+
   const result = await pool.request().execute(procs.listEmployees);
   return result.recordset;
 }
 
-
 async function createEmployee(branch, payload) {
   if (isMockMode()) return mock.createEmployee(branch, payload);
 
-  const pool = await getPool(branch);
-  const maNV = payload.MaNV || `${branch[0]}${String(Date.now()).slice(-4)}`;
-  const localProcs = localProcNamesByBranch();
-  const centralProcs = centralProcNames();
+  //  Xác định đúng chi nhánh đích để mở Pool
+  // Nếu gọi từ CENTRAL, lấy targetBranch từ payload. Nếu gọi từ Local, lấy chính nó.
+  const targetBranch = branch === "CENTRAL" 
+    ? String(payload.ChiNhanh || payload.branch || "").trim().toUpperCase() 
+    : branch;
 
-  if (branch === "CENTRAL") {
-    const targetBranch = String(payload.ChiNhanh || payload.branch || "").trim().toUpperCase();
-    if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
-      throw new Error("ChiNhanh is required for CENTRAL and must be HUE/SAIGON/HANOI");
-    }
-
-    const rs = await pool
-      .request()
-      .input("MaNV", sql.VarChar(50), maNV)
-      .input("HoTen", sql.NVarChar(120), payload.HoTen)
-      .input("ChucVu", sql.NVarChar(80), payload.ChucVu)
-      .input("ChiNhanh", sql.VarChar(10), targetBranch)
-      .execute(centralProcs.createEmployee);
-    return rs.recordset[0] || null;
+  if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
+    throw new Error("ChiNhanh is required and must be HUE/SAIGON/HANOI");
   }
 
+  // Kết nối TRỰC TIẾP tới Database chi nhánh đích
+  const pool = await getPool(targetBranch);
+  const localProcs = localProcNamesByBranch();
+  const maNV = payload.MaNV || `${targetBranch[0]}${String(Date.now()).slice(-4)}`;
+
+  // Chỉ gọi duy nhất 1 Proc của chi nhánh Local
   const rs = await pool
     .request()
     .input("MaNV", sql.VarChar(50), maNV)
@@ -132,30 +131,21 @@ async function createEmployee(branch, payload) {
   return rs.recordset[0] || null;
 }
 
-
+/* --- CẬP NHẬT NHÂN VIÊN --- */
 async function updateEmployee(branch, employeeId, payload) {
   if (isMockMode()) return mock.updateEmployee(branch, employeeId, payload);
 
-  const pool = await getPool(branch);
-  const localProcs = localProcNamesByBranch();
-  const centralProcs = centralProcNames();
+  const targetBranch = branch === "CENTRAL" 
+    ? String(payload.ChiNhanh || payload.branch || "").trim().toUpperCase() 
+    : branch;
 
-  if (branch === "CENTRAL") {
-    const targetBranch = payload?.ChiNhanh ? String(payload.ChiNhanh).trim().toUpperCase() : null;
-
-    const rs = await pool
-      .request()
-      .input("MaNV", sql.VarChar(50), employeeId)
-      .input("HoTen", sql.NVarChar(120), payload.HoTen || null)
-      .input("ChucVu", sql.NVarChar(80), payload.ChucVu || null)
-      .input("ChiNhanh", sql.VarChar(10), targetBranch)
-      .execute(centralProcs.updateEmployee);
-
-    if (!rs.recordset || !rs.recordset.length) {
-      throw new Error(`Employee ${employeeId} not found in CENTRAL`);
-    }
-    return rs.recordset[0];
+  if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
+    throw new Error("ChiNhanh is required and must be HUE/SAIGON/HANOI");
   }
+
+  // Kết nối TRỰC TIẾP tới Database chi nhánh đích
+  const pool = await getPool(targetBranch);
+  const localProcs = localProcNamesByBranch();
 
   const rs = await pool
     .request()
@@ -165,45 +155,48 @@ async function updateEmployee(branch, employeeId, payload) {
     .execute(localProcs.updateEmployee);
 
   if (!rs.recordset || !rs.recordset.length) {
-    throw new Error(`Employee ${employeeId} not found in ${branch}`);
+    throw new Error(`Employee ${employeeId} not found in ${targetBranch}`);
   }
   return rs.recordset[0];
 }
 
-
-async function deleteEmployee(branch, employeeId) {
+/* --- XÓA NHÂN VIÊN --- */
+async function deleteEmployee(branch, employeeId, payload) {
   if (isMockMode()) return mock.deleteEmployee(branch, employeeId);
 
-  const pool = await getPool(branch);
-  const localProcs = localProcNamesByBranch();
-  const centralProcs = centralProcNames();
+  // Khi xóa từ Central, Front-end cần gửi kèm ChiNhanh của nhân viên đó
+  const targetBranch = branch === "CENTRAL" 
+    ? String(payload?.ChiNhanh || payload?.branch || "").trim().toUpperCase() 
+    : branch;
 
-  // Vẫn cần giữ SELECT trước khi gọi Proc Delete để lấy thông tin nhân viên trả về cho frontend (do các Proc Delete thường không trả về data)
+  if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
+    throw new Error("ChiNhanh is required to delete employee from CENTRAL");
+  }
+
+  const pool = await getPool(targetBranch);
+  const localProcs = localProcNamesByBranch();
+
+  // Đọc dữ liệu trước khi xóa để trả về cho UI
   const beforeDelete = await pool
     .request()
     .input("MaNV", sql.VarChar(50), employeeId)
     .query("SELECT TOP 1 * FROM NhanVien WHERE MaNV = @MaNV;");
 
   if (!beforeDelete.recordset.length) {
-    throw new Error(`Employee ${employeeId} not found in ${branch}`);
+    throw new Error(`Employee ${employeeId} not found in ${targetBranch}`);
   }
 
-  if (branch === "CENTRAL") {
-    await pool
-      .request()
-      .input("MaNV", sql.VarChar(50), employeeId)
-      .execute(centralProcs.deleteEmployee);
-  } else {
-    await pool
-      .request()
-      .input("MaNV", sql.VarChar(50), employeeId)
-      .execute(localProcs.deleteEmployee);
-  }
+  // Gọi Proc Local để xóa
+  await pool
+    .request()
+    .input("MaNV", sql.VarChar(50), employeeId)
+    .execute(localProcs.deleteEmployee);
 
   return beforeDelete.recordset[0];
 }
 
-/* --- 1. LẤY DANH SÁCH HÓA ĐƠN --- */
+
+//Lấy danh sách hóa đơn theo chi nhánh được truyền vào. Node.js kết nối đến DB của chi nhánh đó và gọi thủ tục usp_Local_DanhSachHoaDon để lấy dữ liệu tổng hợp.
 async function listInvoicesByBranch(branch) {
   if (isMockMode()) {
     return mock.listInvoicesByBranch(branch);
@@ -217,7 +210,7 @@ async function listInvoicesByBranch(branch) {
   return result.recordset;
 }
 
-/* --- 2. LẤY CHI TIẾT DÒNG HÓA ĐƠN THEO MaHD --- */
+//Lấy thông tin chi tiết một hóa đơn cụ thể. Node.js kết nối DB tương ứng, truyền invoiceId vào thủ tục usp_Local_ChiTietHoaDon để lấy ra danh sách sản phẩm, số lượng, và thành tiền.
 async function getInvoiceDetails(branch, invoiceId) {
   if (isMockMode()) {
     return mock.getInvoiceDetailsLocal(branch, invoiceId);
@@ -234,14 +227,14 @@ async function getInvoiceDetails(branch, invoiceId) {
     
   return result.recordset;
 }
-
+//Tạo một hóa đơn mới. Hàm này chuẩn bị dữ liệu sản phẩm thành chuỗi JSON, sau đó gọi thủ tục usp_Local_TaoHoaDonNhieuDong tại chi nhánh.
 async function createInvoice(payload) {
  
   if (isMockMode()) {
     return mock.createInvoiceLocal(payload);
   }
 
-  // 2. Mặc định dùng Stored Procedure (đã bỏ if check)
+  // 2. Mặc định dùng Stored Procedure 
   const pool = await getPool(payload.branch);
   const procs = localProcNamesByBranch();
   const maHD = `HD_${Date.now()}`;
@@ -355,50 +348,51 @@ async function createInvoice(payload) {
   };
 }
 
-/* ---  LẤY DANH SÁCH NHÂN VIÊN TỪ TẤT CẢ CHI NHÁNH --- */
-async function listAllEmployeesFromCentral() {
-  if (isMockMode()) return mock.listAllEmployees();
-
-  const linked = linkedServerNames();
-  const pool = await getPool("CENTRAL");
-  
-  // Đọc trực tiếp từ VIEW,
-  const viaView = await pool.request().query(`
-    SELECT MaNV, HoTen, ChucVu, ChiNhanh
-    FROM [${linked.HUE}].[Store_H].dbo.v_NhanVien_ToanQuoc;
-  `);
-  return viaView.recordset;
-}
-
 /* ---  TỔNG HỢP DOANH THU TOÀN QUỐC --- */
-async function getNationalRevenue() {
+async function getNationalRevenue(callerBranch) {
+  // Mock mode: trả dữ liệu giả để test giao diện/luồng API.
   if (isMockMode()) return mock.revenueReport();
 
-  const linked = linkedServerNames();
-  const pool = await getPool("CENTRAL");
-  
-  // Đọc trực tiếp từ VIEW
-  const viewRs = await pool.request().query(`
-    SELECT ChiNhanh AS BranchCode, SUM(ThanhTien) AS Revenue
-    FROM [${linked.HUE}].[Store_H].dbo.v_HoaDonChiTiet_ToanQuoc
-    GROUP BY ChiNhanh;
-  `);
+  // Chuẩn hóa caller để rẽ nhánh đúng CENTRAL/BRANCH.
+  const normalizedCaller = String(callerBranch || "").trim().toUpperCase();
 
-  const byBranch = viewRs.recordset.map((row) => ({
+  let rows;
+  let mode;
+  if (normalizedCaller === "CENTRAL") {
+    const pool = await getPool("CENTRAL");
+    // CENTRAL: gọi proc ở DB gốc, không đi qua linked server.truy vấn tại db CENTRALDB
+    rows = await executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuQuocGia");
+    mode = "SQL_SERVER_CENTRAL_PROC";
+  } else {
+    const pool = await getPool(normalizedCaller);
+    // BRANCH: đọc view toàn cục tại branch (view đã gom dữ liệu qua linked server).
+    const rs = await pool.request().query(`
+      SELECT ChiNhanh AS BranchCode, SUM(ThanhTien) AS Revenue
+      FROM dbo.v_HoaDonChiTiet_ToanQuoc
+      GROUP BY ChiNhanh;
+    `);
+    rows = rs.recordset || [];
+    mode = "SQL_SERVER_BRANCH_VIEW";
+  }
+
+  // Chuẩn hóa output về kiểu số để frontend render an toàn.
+  const byBranch = rows.map((row) => ({
     branch: row.BranchCode,
     revenue: Number(row.Revenue || 0),
   }));
   const nationalRevenue = byBranch.reduce((sum, item) => sum + item.revenue, 0);
 
   return {
-    mode: "SQL_SERVER_VIEW", // Đổi tên báo mode cho rõ ràng
+    mode,
+    callerBranch: normalizedCaller,
     generatedAt: new Date().toISOString(),
     byBranch,
     nationalRevenue,
   };
 }
-// gọi các proc tổng hợp analytics từ CENTRAL, trả về object tổng hợp gồm doanh thu theo ngày, theo tuần, top nhân viên, top sản phẩm, so sánh doanh thu tuần.
-async function getCentralAnalyticsOverview(sourceBranch) {
+ 
+async function getCentralAnalyticsOverview(callerBranch, sourceBranch) {
+
   if (isMockMode()) {
     return {
       mode: "MOCK",
@@ -412,19 +406,48 @@ async function getCentralAnalyticsOverview(sourceBranch) {
     };
   }
 
-  const pool = await getPool("CENTRAL");
-  const analyticsSourceBranch = normalizeAnalyticsBranch(
-    sourceBranch || process.env.ANALYTICS_SP_SOURCE_BRANCH || "HUE",
-  );
+  // Chuẩn hóa caller trước khi quyết định chạy proc central hay branch.
+  const normalizedCaller = String(callerBranch || "").trim().toUpperCase();
+  let analyticsSourceBranch;
+  let mode;
+  let dailyRows;
+  let weeklyRows;
+  let topEmployeeRows;
+  let topProductRows;
+  let compareRows;
 
-  const [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
-    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_DoanhThuVaSoDon_TheoNgay"),
-    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_DoanhThuVaSoDon_TheoTuan"),
-    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_NhanVienBanTotNhatTuan"),
-    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_SanPhamBanChayNhat_MoiChiNhanh"),
-    executeAnalyticsProcFromCentral(pool, analyticsSourceBranch, "usp_SoSanhDoanhThuTuan"),
-  ]);
+  if (normalizedCaller === "CENTRAL") {
+    const pool = await getPool("CENTRAL");
+    analyticsSourceBranch = "CENTRAL";
+    mode = "SQL_SERVER_CENTRAL_PROC";
 
+    // CENTRAL: toàn bộ analytics lấy qua các proc ở DB trung tâm. proc này lấy dữ liệu  trực tiếp tại db trung tâm
+    [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
+      executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoNgay"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoTuan"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_NhanVienBanTotNhatTuan"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_SanPhamBanChayNhat_MoiChiNhanh"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_SoSanhDoanhThuTuan"),
+    ]);
+  } else {
+    const pool = await getPool(normalizedCaller);
+    // BRANCH: sourceBranch chỉ dùng để hiển thị nguồn đọc analytics trên UI.
+    analyticsSourceBranch = normalizeAnalyticsBranch(
+      sourceBranch || normalizedCaller || process.env.ANALYTICS_SP_SOURCE_BRANCH || "HUE",
+    );
+    mode = "SQL_SERVER_BRANCH_VIEW_PROC";
+
+    // BRANCH: gọi các proc analytics đã triển khai ở DB chi nhánh. proc này lấy dữ liệu qua link server
+    [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
+      executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoNgay"),
+      executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoTuan"),
+      executeAnalyticsProcOnBranch(pool, "usp_NhanVienBanTotNhatTuan"),
+      executeAnalyticsProcOnBranch(pool, "usp_SanPhamBanChayNhat_MoiChiNhanh"),
+      executeAnalyticsProcOnBranch(pool, "usp_SoSanhDoanhThuTuan"),
+    ]);
+  }
+
+  // Mapping recordset -> DTO trả cho frontend (thống nhất tên field + ép kiểu số).
   const daily = dailyRows.map((row) => ({
     branch: row.ChiNhanh,
     date: row.Ngay,
@@ -461,7 +484,8 @@ async function getCentralAnalyticsOverview(sourceBranch) {
   }));
 
   return {
-    mode: "SQL_SERVER",
+    mode,
+    callerBranch: normalizedCaller,
     analyticsSourceBranch,
     generatedAt: new Date().toISOString(),
     daily,
@@ -671,6 +695,7 @@ async function getProductByCode(branch, productCode) {
   };
 } 
 
+//hàm cập nhật tồn kho tổng quát cho một sản phẩm tại chi nhánh. Hàm này sẽ gọi thủ tục usp_Local_CapNhatTonKhoTongQuat tại chi nhánh để cập nhật số lượng tồn kho mới. 
 async function updateInventoryItem(branch, productCode, quantity) {
   if (isMockMode()) {
     return mock.updateInventoryItem(branch, productCode, quantity);
@@ -680,7 +705,7 @@ async function updateInventoryItem(branch, productCode, quantity) {
   const procs = localProcNamesByBranch();
   const targetQty = Number(quantity || 0);
 
-  // Gọi thẳng Proc, bỏ if(isInventoryImportProcMode()) và câu UPDATE inline
+
   const updatedRs = await pool
     .request()
     .input("MaSP", sql.VarChar(50), productCode)
@@ -702,9 +727,9 @@ async function updateInventoryItem(branch, productCode, quantity) {
 }
 
 
-/*
- * Tạo số liệu cho dashboard chi nhánh bằng các truy vấn tổng hợp
- 
+/**
+ * Lấy toàn bộ dữ liệu để vẽ giao diện Dashboard (Tổng quan) cho MỘT chi nhánh.
+ * Hàm này sẽ gọi cùng lúc 3 Proc nội bộ của chi nhánh đó để gom dữ liệu cho lẹ.
  */
 async function getBranchDashboard(branch) {
   if (isMockMode()) {
@@ -812,8 +837,6 @@ async function transferStockDistributed(payload) {
     }
     throw error;
   }
-
-
   //  ĐỌC TỒN KHO SAU KHI CHUYỂN (Cho UI)
 
   const afterFrom = await pool.request()
@@ -860,7 +883,7 @@ module.exports = {
   listInvoicesByBranch,
   getInvoiceDetails,
   createInvoice,
-listAllEmployeesFromCentral,
+
   getNationalRevenue,
   getCentralAnalyticsOverview,
   transferStockDistributed,

@@ -483,6 +483,13 @@ async function setupBranchDashboardPage() {
   const refreshBranchDashboard = document.getElementById(
     "refreshBranchDashboard",
   );
+  const openBranchGlobalOverview = document.getElementById("openBranchGlobalOverview");
+
+  if (openBranchGlobalOverview) {
+    openBranchGlobalOverview.addEventListener("click", () => {
+      window.location.href = "/branch-global-overview.html";
+    });
+  }
 
   dashboardApiLine.textContent = `GET /api/branch-dashboard?branch=${branch}`;
 
@@ -915,11 +922,23 @@ async function setupBranchProductsPage() {
   await loadBranchProducts();
 }
 
-async function setupCentralOverviewPage() {
-  if (!ensureCentralBranch()) {
-    return;
+async function setupCentralOverviewPage(options = {}) {
+  const branchMode = Boolean(options.branchMode);
+  let requestBranch = "CENTRAL";
+
+  if (branchMode) {
+    const branch = ensureLocalBranch();
+    if (!branch) {
+      return;
+    }
+    requestBranch = branch;
+    setupBranchShell(branch);
+  } else {
+    if (!ensureCentralBranch()) {
+      return;
+    }
+    setupCentralShell();
   }
-  setupCentralShell();
 
   const centralStatsGrid = document.getElementById("centralStatsGrid");
   const centralDailyTableWrap = document.getElementById("centralDailyTableWrap");
@@ -1127,8 +1146,8 @@ async function setupCentralOverviewPage() {
 
   async function loadRevenue() {
     const [result, analytics] = await Promise.all([
-      fetchJSON("/api/revenue/national?branch=CENTRAL"),
-      fetchJSON("/api/analytics/overview?branch=CENTRAL"),
+      fetchJSON(`/api/revenue/national?branch=${requestBranch}`),
+      fetchJSON(`/api/analytics/overview?branch=${requestBranch}`),
     ]);
 
     const byBranch = Array.isArray(result.byBranch) ? result.byBranch : [];
@@ -1863,6 +1882,11 @@ async function setupCentralTransferPage() {
 
     if (page === "central-overview") {
       await setupCentralOverviewPage();
+      return;
+    }
+
+    if (page === "branch-global-overview") {
+      await setupCentralOverviewPage({ branchMode: true });
       return;
     }
 

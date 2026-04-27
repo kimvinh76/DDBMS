@@ -435,5 +435,137 @@ WHERE MaSP = 'MI_GOI' AND ChiNhanh IN ('HUE', 'SAIGON')
 ORDER BY ChiNhanh;
 GO
 
+CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuQuocGia
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        hd.ChiNhanh AS BranchCode,
+        SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))) AS Revenue
+    FROM dbo.HoaDon hd
+    INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+    WHERE hd.ChiNhanh IN ('HUE', 'SAIGON', 'HANOI')
+    GROUP BY hd.ChiNhanh
+    ORDER BY hd.ChiNhanh;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuVaSoDon_TheoNgay
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        hd.ChiNhanh,
+        CAST(hd.NgayTao AS DATE) AS Ngay,
+        COUNT(DISTINCT hd.MaHD) AS TongSoDonHang,
+        SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))) AS TongDoanhThu
+    FROM dbo.HoaDon hd
+    INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+    WHERE hd.ChiNhanh IN ('HUE', 'SAIGON', 'HANOI')
+    GROUP BY hd.ChiNhanh, CAST(hd.NgayTao AS DATE)
+    ORDER BY Ngay DESC, hd.ChiNhanh;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuVaSoDon_TheoTuan
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        hd.ChiNhanh,
+        DATEPART(YEAR, hd.NgayTao) AS Nam,
+        DATEPART(WEEK, hd.NgayTao) AS TuanTrongNam,
+        COUNT(DISTINCT hd.MaHD) AS TongSoDonHang,
+        SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))) AS TongDoanhThu
+    FROM dbo.HoaDon hd
+    INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+    WHERE hd.ChiNhanh IN ('HUE', 'SAIGON', 'HANOI')
+    GROUP BY hd.ChiNhanh, DATEPART(YEAR, hd.NgayTao), DATEPART(WEEK, hd.NgayTao)
+    ORDER BY Nam DESC, TuanTrongNam DESC, hd.ChiNhanh;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Central_NhanVienBanTotNhatTuan
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    WITH TinhDoanhThu AS (
+        SELECT
+            hd.ChiNhanh,
+            hd.MaNV,
+            nv.HoTen,
+            SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))) AS TongDoanhThu,
+            ROW_NUMBER() OVER (
+                PARTITION BY hd.ChiNhanh
+                ORDER BY SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))) DESC
+            ) AS Hang
+        FROM dbo.HoaDon hd
+        INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+        INNER JOIN dbo.NhanVien nv ON nv.MaNV = hd.MaNV AND nv.ChiNhanh = hd.ChiNhanh
+        WHERE hd.ChiNhanh IN ('HUE', 'SAIGON', 'HANOI')
+          AND DATEPART(WEEK, hd.NgayTao) = DATEPART(WEEK, GETDATE())
+          AND DATEPART(YEAR, hd.NgayTao) = DATEPART(YEAR, GETDATE())
+        GROUP BY hd.ChiNhanh, hd.MaNV, nv.HoTen
+    )
+    SELECT ChiNhanh, MaNV, HoTen, TongDoanhThu
+    FROM TinhDoanhThu
+    WHERE Hang = 1;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Central_SanPhamBanChayNhat_MoiChiNhanh
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    WITH TinhSoLuong AS (
+        SELECT
+            hd.ChiNhanh,
+            ct.MaSP,
+            hh.TenHang,
+            SUM(ct.SoLuong) AS TongSoLuongBan,
+            ROW_NUMBER() OVER (
+                PARTITION BY hd.ChiNhanh
+                ORDER BY SUM(ct.SoLuong) DESC
+            ) AS Hang
+        FROM dbo.HoaDon hd
+        INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+        INNER JOIN dbo.HangHoa hh ON hh.MaSP = ct.MaSP
+        WHERE hd.ChiNhanh IN ('HUE', 'SAIGON', 'HANOI')
+          AND DATEPART(WEEK, hd.NgayTao) = DATEPART(WEEK, GETDATE())
+          AND DATEPART(YEAR, hd.NgayTao) = DATEPART(YEAR, GETDATE())
+        GROUP BY hd.ChiNhanh, ct.MaSP, hh.TenHang
+    )
+    SELECT ChiNhanh, MaSP, TenHang, TongSoLuongBan
+    FROM TinhSoLuong
+    WHERE Hang = 1;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Central_SoSanhDoanhThuTuan
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        hd.ChiNhanh,
+        SUM(CASE WHEN DATEPART(WEEK, hd.NgayTao) = DATEPART(WEEK, GETDATE())
+                 THEN CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2)) ELSE 0 END) AS DoanhThuTuanNay,
+        SUM(CASE WHEN DATEPART(WEEK, hd.NgayTao) = DATEPART(WEEK, GETDATE()) - 1
+                 THEN CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2)) ELSE 0 END) AS DoanhThuTuanTruoc
+    FROM dbo.HoaDon hd
+    INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+    WHERE hd.ChiNhanh IN ('HUE', 'SAIGON', 'HANOI')
+      AND DATEPART(YEAR, hd.NgayTao) = DATEPART(YEAR, GETDATE())
+      AND DATEPART(WEEK, hd.NgayTao) IN (DATEPART(WEEK, GETDATE()), DATEPART(WEEK, GETDATE()) - 1)
+    GROUP BY hd.ChiNhanh
+    ORDER BY hd.ChiNhanh;
+END;
+GO
+
 
 

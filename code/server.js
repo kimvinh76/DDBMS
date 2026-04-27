@@ -16,7 +16,7 @@ const {
   listInvoicesByBranch,
   createInvoice,
 
-  listAllEmployeesFromCentral,
+
   getNationalRevenue,
   getCentralAnalyticsOverview,
   transferStockDistributed,
@@ -299,11 +299,11 @@ app.get("/api/all-employees", async (req, res) => {
 app.get("/api/revenue/national", async (req, res) => {
   try {
     const branch = normalizeBranch(req.query.branch);
-    if (!branch || !isCentralBranch(branch)) {
-      return res.status(400).json({ message: "branch must be CENTRAL" });
+    if (!branch) {
+      return res.status(400).json({ message: "branch is required" });
     }
 
-    const report = await getNationalRevenue();
+    const report = await getNationalRevenue(branch);
     return res.json(report);
   } catch (error) {
     return res.status(500).json({ message: error.message });
@@ -313,15 +313,15 @@ app.get("/api/revenue/national", async (req, res) => {
 app.get("/api/analytics/overview", async (req, res) => {
   try {
     const branch = normalizeBranch(req.query.branch);
-    if (!branch || !isCentralBranch(branch)) {
-      return res.status(400).json({ message: "branch must be CENTRAL" });
+    if (!branch) {
+      return res.status(400).json({ message: "branch is required" });
     }
 
     const sourceBranch = req.query.sourceBranch
       ? String(req.query.sourceBranch).trim().toUpperCase()
       : undefined;
 
-    const report = await getCentralAnalyticsOverview(sourceBranch);
+    const report = await getCentralAnalyticsOverview(branch, sourceBranch);
     return res.json(report);
   } catch (error) {
     return res.status(500).json({ message: error.message });
