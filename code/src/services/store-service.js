@@ -28,7 +28,6 @@ function localProcNamesByBranch() {
     listInventory: "dbo.usp_Local_DanhSachTonKho",
     inventoryByCode: "dbo.usp_Local_TonKhoTheoMaSP",
     updateInventory: "dbo.usp_Local_CapNhatTonKhoTongQuat",
-    productByCode: "dbo.usp_Local_HangHoaTheoMaSP",
     dashboardSummary: "dbo.usp_Local_DashboardTongQuan",
     dashboardRevenue7d: "dbo.usp_Local_DashboardDoanhThu7Ngay",
     dashboardTopStock: "dbo.usp_Local_DashboardTopTonKho",
@@ -589,6 +588,7 @@ async function listProducts(branch = "CENTRAL") {
   
   return result.recordset;
 }
+
 async function createProduct(payload) {
   if (isMockMode()) {
     return mock.createProduct(payload);
@@ -600,7 +600,7 @@ async function createProduct(payload) {
   const name = String(payload.productName || code).trim();
   const price = Number(payload.unitPrice || 0);
 
-  // CHỈ CẦN GỌI ĐÚNG SP Ở CENTRAL. REPLICATION SẼ TỰ ĐẨY XUỐNG CHI NHÁNH!
+
   await pool.request()
     .input("MaSP", sql.VarChar(50), code)
     .input("TenHang", sql.NVarChar(100), name)
