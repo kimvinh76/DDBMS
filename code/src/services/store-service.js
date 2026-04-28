@@ -41,6 +41,13 @@ function centralProcNames() {
     updateProduct: "dbo.usp_Central_CapNhatHangHoa",
     deleteProduct: "dbo.usp_Central_XoaHangHoa",
   };
+} 
+// Tên proc DÙNG CHUNG cho các bảng nhân bản toàn phần 
+function commonProcNames() {
+  return {
+    listProducts: "dbo.usp_Chung_DanhSachHangHoa",
+    productByCode: "dbo.usp_Chung_HangHoaTheoMaSP",
+  };
 }
 function normalizeAnalyticsBranch(branch) {
   const normalized = String(branch || "").trim().toUpperCase();
@@ -421,7 +428,7 @@ async function getCentralAnalyticsOverview(callerBranch, sourceBranch) {
     analyticsSourceBranch = "CENTRAL";
     mode = "SQL_SERVER_CENTRAL_PROC";
 
-    // CENTRAL: toàn bộ analytics lấy qua các proc ở DB trung tâm. proc này lấy dữ liệu  trực tiếp tại db trung tâm
+    // nếu là CENTRAL: toàn bộ analytics lấy qua các proc ở server trung tâm. proc này lấy dữ liệu Trực tiếp tại db trung tâm
     [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
       executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoNgay"),
       executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoTuan"),
@@ -431,13 +438,13 @@ async function getCentralAnalyticsOverview(callerBranch, sourceBranch) {
     ]);
   } else {
     const pool = await getPool(normalizedCaller);
-    // BRANCH: sourceBranch chỉ dùng để hiển thị nguồn đọc analytics trên UI.
+    //  BRANCH: sourceBranch chỉ dùng để hiển thị nguồn đọc analytics trên UI.
     analyticsSourceBranch = normalizeAnalyticsBranch(
       sourceBranch || normalizedCaller || process.env.ANALYTICS_SP_SOURCE_BRANCH || "HUE",
     );
     mode = "SQL_SERVER_BRANCH_VIEW_PROC";
 
-    // BRANCH: gọi các proc analytics đã triển khai ở DB chi nhánh. proc này lấy dữ liệu qua link server
+    // nếu là chi nhánh BRANCH: gọi các proc analytics đã triển khai ở DB chi nhánh. proc này lấy dữ liệu qua link server ko cần vào db trung tâm
     [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
       executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoNgay"),
       executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoTuan"),
@@ -535,23 +542,52 @@ async function listInventory(branch, productCode) {
   };
 }
 
-/*
- * Liệt kê sản phẩm từ bảng `HangHoa` ở CENTRAL.
- * Truy vấn: SELECT MaSP AS productCode, TenHang AS productName, Gia AS unitPrice FROM dbo.HangHoa
- * Nếu mock mode thì dùng `mock.listProducts()`.
- */
-async function listProducts() {
+
+//lấy chi tiết sản phẩm 
+async function getProductByCode(branch, productCode) {
+  if (isMockMode()) {
+    return mock.getProductByCode(branch, productCode);
+  }
+
+  const code = String(productCode || "").trim();
+  if (!code) {
+    throw new Error("productCode is required");
+  }
+
+  // Kết nối thẳng vào DB của chi nhánh truyền xuống (có thể là HUE, SAIGON...)
+  const pool = await getPool(branch);
+  const commonProcs = commonProcNames();
+
+  const rs = await pool
+    .request()
+    .input("MaSP", sql.VarChar(50), code)
+    .execute(commonProcs.productByCode); // Gọi Proc dùng chung
+
+  const row = rs.recordset[0] || null;
+  if (!row) return null;
+
+  return {
+    branch,
+    productCode: row.MaSP,
+    productName: row.TenHang,
+    unitPrice: Number(row.Gia || 0),
+  };
+}
+
+// lấy danh sách sản phẩm 
+async function listProducts(branch = "CENTRAL") {
   if (isMockMode()) {
     return mock.listProducts();
   }
 
-  const pool = await getPool("CENTRAL");
+  // Kết nối thẳng vào DB của chi nhánh tương ứng
+  const pool = await getPool(branch);
+  const commonProcs = commonProcNames();
   
-    // SP mode (Phase 1): đọc danh mục hàng hóa qua proc central.
-    const result = await pool.request().execute("dbo.usp_Central_DanhSachHangHoa");
-    return result.recordset;
+  // Đọc danh mục hàng hóa qua proc chung
+  const result = await pool.request().execute(commonProcs.listProducts);
   
-
+  return result.recordset;
 }
 async function createProduct(payload) {
   if (isMockMode()) {
@@ -647,53 +683,7 @@ async function deleteProduct(productCode) {
 
   return { deleted: true, productCode: code };
 }
-async function getProductByCode(branch, productCode) {
-  if (isMockMode()) {
-    return mock.getProductByCode(branch, productCode);
-  }
 
-  const code = String(productCode || "").trim();
-  if (!code) {
-    throw new Error("productCode is required");
-  }
-
-  // Nếu là CENTRAL, gọi Proc của Central
-  if (branch === "CENTRAL") {
-    const centralPool = await getPool("CENTRAL");
-    const rs = await centralPool
-      .request()
-      .input("MaSP", sql.VarChar(50), code)
-      .execute("dbo.usp_Central_HangHoaTheoMaSP");
-
-    const row = rs.recordset[0] || null;
-    if (!row) return null;
-
-    return {
-      branch,
-      productCode: row.MaSP,
-      productName: row.TenHang,
-      unitPrice: Number(row.Gia || 0),
-    };
-  }
-
-  // Nếu là Chi nhánh, gọi Proc của Local
-  const pool = await getPool(branch);
-  const procs = localProcNamesByBranch();
-  const rs = await pool
-    .request()
-    .input("MaSP", sql.VarChar(50), code)
-    .execute(procs.productByCode);
-
-  const row = rs.recordset[0] || null;
-  if (!row) return null;
-
-  return {
-    branch,
-    productCode: row.MaSP,
-    productName: row.TenHang,
-    unitPrice: Number(row.Gia || 0),
-  };
-} 
 
 //hàm cập nhật tồn kho tổng quát cho một sản phẩm tại chi nhánh. Hàm này sẽ gọi thủ tục usp_Local_CapNhatTonKhoTongQuat tại chi nhánh để cập nhật số lượng tồn kho mới. 
 async function updateInventoryItem(branch, productCode, quantity) {
