@@ -55,17 +55,11 @@
 
           <div class="crud-panel active" data-crud-panel="create">
             <form id="centralInvoiceCreateForm" class="form-grid invoice-create-grid invoice-create-grid-central">
-              <label class="invoice-meta invoice-meta-branch" style="grid-column: span 1;">
-                Chi nhánh
-                <select name="branch" required>
-                  <option value="HUE">HUE</option>
-                  <option value="SAIGON">SAIGON</option>
-                  <option value="HANOI">HANOI</option>
-                </select>
-              </label>
               <label class="invoice-meta invoice-meta-employee" style="grid-column: span 1;">
                 MaNV
-                <input name="employeeId" placeholder="VD: H001" />
+                <select name="employeeId" required>
+                  <option value="">Chọn nhân viên</option>
+                </select>
               </label>
               <label class="invoice-meta invoice-meta-total" style="grid-column: span 2;">
                 Tổng tiền
@@ -91,7 +85,7 @@
             <h3>Dữ liệu hóa đơn theo chi nhánh</h3>
             <div class="inline-form">
               <label>
-                Xem chi nhánh
+                Chi nhánh áp dụng
                 <select id="centralInvoicesReadBranch">
                   <option value="HUE">HUE</option>
                   <option value="SAIGON">SAIGON</option>

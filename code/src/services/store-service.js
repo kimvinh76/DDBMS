@@ -41,7 +41,7 @@ function centralProcNames() {
     deleteProduct: "dbo.usp_Central_XoaHangHoa",
   };
 } 
-// Tên proc DÙNG CHUNG cho các bảng nhân bản toàn phần 
+// Tên proc dùng chung cho các bảng nhân bản toàn phần 
 function commonProcNames() {
   return {
     listProducts: "dbo.usp_Chung_DanhSachHangHoa",
@@ -72,7 +72,7 @@ function sourceInfoByBranch(branch) {
   return { server: linked.HANOI, db: dbNameByBranch("HANOI") };
 }
 
-
+// Các hàm thực thi proc analytics, tách biệt giữa chạy proc ở Branch (dữ liệu qua linked server) và chạy proc ở Central (dữ liệu trực tiếp).
 async function executeAnalyticsProcOnBranch(pool, procName) {
   const rs = await pool.request().execute(`dbo.${procName}`);
   return rs.recordset || [];
@@ -354,7 +354,15 @@ async function createInvoice(payload) {
   };
 }
 
-/* ---  TỔNG HỢP DOANH THU TOÀN QUỐC --- */
+/**
+ * TỔNG QUAN DOANH THU TOÀN QUỐC & TỶ TRỌNG
+   Chức năng: Tính tổng doanh thu toàn hệ thống và phân bổ doanh thu theo từng chi nhánh.
+   Trách nhiệm UI: 
+   Các thẻ Card trên cùng (Cấp số liệu cho thẻ "Tổng doanh thu").
+  Biểu đồ cột: "So sánh doanh thu theo chi nhánh".
+  Biểu đồ tròn: "Tỷ trọng doanh thu".
+ */
+
 async function getNationalRevenue(callerBranch) {
   // Mock mode: trả dữ liệu giả để test giao diện/luồng API.
   if (isMockMode()) return mock.revenueReport();
@@ -397,6 +405,13 @@ async function getNationalRevenue(callerBranch) {
   };
 }
  
+/**
+  PHÂN TÍCH CHUYÊN SÂU TOÀN QUỐC (NGÀY, TUẦN, XẾP HẠNG)
+ Chức năng: Gọi song song 5 thủ tục để lấy luồng dữ liệu chuỗi thời gian và các bảng xếp hạng
+ Trách nhiệm UI:
+ Khu vực "Phân tích theo ngày và tuần": Cấp dữ liệu cho Biểu đồ đường (7 ngày gần nhất) và Biểu đồ cột (Theo tuần).
+  Các bảng xếp hạng "Top nhân viên, Sản phẩm bán chạy": Cấp dữ liệu cho Top Nhân viên xuất sắc và Top Sản phẩm bán chạy.
+ */
 async function getCentralAnalyticsOverview(callerBranch, sourceBranch) {
 
   if (isMockMode()) {
@@ -718,8 +733,11 @@ async function updateInventoryItem(branch, productCode, quantity) {
 
 
 /**
- * Lấy toàn bộ dữ liệu để vẽ giao diện Dashboard (Tổng quan) cho MỘT chi nhánh.
- * Hàm này sẽ gọi cùng lúc 3 Proc nội bộ của chi nhánh đó để gom dữ liệu cho lẹ.
+  LẤY DỮ LIỆU DASHBOARD CỤC BỘ CHO CHI NHÁNH
+  Chạy song song 3 Stored Procedure nội bộ để cấp số liệu cho giao diện:
+  Tổng quan: Lấy các con số tổng (nhân viên, hóa đơn, doanh thu, tồn kho, cảnh báo sắp hết hàng).
+   Doanh thu 7 ngày: Dữ liệu để vẽ biểu đồ xu hướng tuần.
+   Top tồn kho: Danh sách 8 sản phẩm đang còn tồn nhiều nhất.
  */
 async function getBranchDashboard(branch) {
   if (isMockMode()) {
@@ -729,7 +747,7 @@ async function getBranchDashboard(branch) {
   const pool = await getPool(branch);
   const procs = localProcNamesByBranch();
 
-  // Gọi 3 Proc song song (đã bỏ if và bỏ query raw)
+  // Gọi 3 Proc song song 
   const [summaryRs, revenueRs, topStockRs] = await Promise.all([
     pool.request().execute(procs.dashboardSummary),
     pool.request().execute(procs.dashboardRevenue7d),

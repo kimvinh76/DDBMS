@@ -52,7 +52,9 @@
             <form id="invoiceCreateForm" class="form-grid invoice-create-grid">
               <label class="invoice-meta" style="grid-column: span 2;">
                 Mã nhân viên
-                <input name="employeeId" placeholder="VD: H001" />
+                <select name="employeeId" required>
+                  <option value="">Chọn nhân viên</option>
+                </select>
               </label>
               <label class="invoice-meta" style="grid-column: span 2;">
                 Tổng tiền

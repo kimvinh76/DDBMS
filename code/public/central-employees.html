@@ -58,14 +58,6 @@
           <div class="crud-panel active" data-crud-panel="create">
             <form id="centralEmployeeCreateForm" class="form-grid">
               <label>
-                Chi nhánh
-                <select name="branch" required>
-                  <option value="HUE">HUE</option>
-                  <option value="SAIGON">SAIGON</option>
-                  <option value="HANOI">HANOI</option>
-                </select>
-              </label>
-              <label>
                 MaNV (tùy chọn)
                 <input name="MaNV" placeholder="VD: H003" />
               </label>
@@ -75,7 +67,13 @@
               </label>
               <label>
                 Chức vụ
-                <input name="ChucVu" required />
+                <select name="ChucVu" required>
+                 
+                  <option value="Quản lý">Quản lý </option>
+                  <option value="Thu ngân">Thu ngân</option>
+                  <option value="Bán hàng">Bán hàng</option>
+               
+                </select>
               </label>
               <button type="submit" class="primary">Create Nhân viên</button>
             </form>
@@ -84,16 +82,8 @@
           <div class="crud-panel" data-crud-panel="update">
             <form id="centralEmployeeUpdateForm" class="form-grid compact-top">
               <label>
-                Chi nhánh
-                <select name="branch" required>
-                  <option value="HUE">HUE</option>
-                  <option value="SAIGON">SAIGON</option>
-                  <option value="HANOI">HANOI</option>
-                </select>
-              </label>
-              <label>
                 MaNV cần sửa
-                <input name="employeeId" required />
+                <input name="employeeId" required readonly />
               </label>
               <label>
                 Họ tên mới
@@ -101,7 +91,13 @@
               </label>
               <label>
                 Chức vụ mới
-                <input name="ChucVu" />
+                <select name="ChucVu">
+                  
+                  <option value="Quản lý">Quản lý</option>
+                  <option value="Thu ngân">Thu ngân</option>
+                  <option value="Bán hàng">Bán hàng</option>
+              
+                </select>
               </label>
               <button type="submit" class="ghost">Update Nhân viên</button>
             </form>
@@ -112,14 +108,6 @@
               id="centralEmployeeDeleteForm"
               class="inline-form compact-top"
             >
-              <label>
-                Chi nhánh
-                <select name="branch" required>
-                  <option value="HUE">HUE</option>
-                  <option value="SAIGON">SAIGON</option>
-                  <option value="HANOI">HANOI</option>
-                </select>
-              </label>
               <label>
                 MaNV cần xóa
                 <input name="employeeId" required />
@@ -132,7 +120,7 @@
             <h3>Dữ liệu nhân viên theo chi nhánh</h3>
             <div class="inline-form">
               <label>
-                Xem chi nhánh
+                Chi nhánh áp dụng
                 <select id="centralEmployeesReadBranch">
                   <option value="HUE">HUE</option>
                   <option value="SAIGON">SAIGON</option>

@@ -62,7 +62,13 @@
               </label>
               <label>
                 Chức vụ
-                <input name="ChucVu" required />
+                <select name="ChucVu" required>
+                 
+                  <option value="Quản lý">Quản lý</option>
+                  <option value="Thu ngân">Thu ngân</option>
+                  <option value="Bán hàng">Bán hàng</option>
+           
+                </select>
               </label>
               <button type="submit" class="primary">Thêm nhân viên</button>
             </form>
@@ -72,7 +78,7 @@
             <form id="employeeUpdateForm" class="form-grid compact-top" style="grid-template-columns: repeat(4, minmax(130px, 1fr));">
               <label>
                 MaNV cần sửa
-                <input name="employeeId" required />
+                <input name="employeeId" required readonly />
               </label>
               <label>
                 Họ tên mới
@@ -80,7 +86,13 @@
               </label>
               <label>
                 Chức vụ mới
-                <input name="ChucVu" />
+                <select name="ChucVu">
+                 
+                  <option value="Quản lý">Quản lý </option>
+                  <option value="Thu ngân">Thu ngân</option>
+                  <option value="Bán hàng">Bán hàng</option>
+          
+                </select>
               </label>
               <button type="submit" class="ghost">Cập nhật nhân viên</button>
             </form>

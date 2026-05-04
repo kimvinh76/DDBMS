@@ -21,6 +21,8 @@ function logout() {
   window.location.href = "/";
 }
 
+
+//chuyển trang navigate theo chi nhánh đã chọn ở trang chủ 
 function navigateByBranch(branch) {
   window.location.href =
     branch === "CENTRAL" ? "/central-overview.html" : "/branch-dashboard.html";
@@ -194,6 +196,33 @@ async function fetchJSON(url, options) {
     throw new Error(data.message || "Request failed");
   }
   return data;
+}
+
+function renderEmployeeSelectOptions(selectEl, employees, placeholder) {
+  if (!selectEl) {
+    return;
+  }
+
+  const currentValue = String(selectEl.value || "");
+  selectEl.innerHTML = "";
+
+  const placeholderOption = document.createElement("option");
+  placeholderOption.value = "";
+  placeholderOption.textContent = placeholder || "Chọn nhân viên";
+  selectEl.appendChild(placeholderOption);
+
+  employees.forEach((employee) => {
+    const option = document.createElement("option");
+    const code = String(employee.MaNV || "").trim();
+    const name = String(employee.HoTen || "").trim();
+    option.value = code;
+    option.textContent = name ? `${code} - ${name}` : code;
+    selectEl.appendChild(option);
+  });
+
+  if (currentValue && employees.some((employee) => String(employee.MaNV || "") === currentValue)) {
+    selectEl.value = currentValue;
+  }
 }
 
 function formatNumber(value) {
@@ -459,7 +488,7 @@ function renderStatsGrid(wrapper, stats) {
     )
     .join("");
 }
-
+// Thiết lập sự kiện cho các nút chọn chi nhánh trên trang chủ để lưu chi nhánh đã chọn và chuyển hướng đến trang tổng quan tương ứng.
 function setupLandingPage() {
   const buttons = document.querySelectorAll("[data-branch]");
   buttons.forEach((btn) => {
@@ -492,7 +521,7 @@ async function setupBranchDashboardPage() {
   }
 
   dashboardApiLine.textContent = `GET /api/branch-dashboard?branch=${branch}`;
-
+// Hàm tải dữ liệu cho trang tổng quan chi nhánh, bao gồm thống kê, hóa đơn và tồn kho, sau đó hiển thị chúng trên giao diện.
   async function loadBranchDashboard() {
     const [result, invoicesResp, inventoryRows] = await Promise.all([
       fetchJSON(`/api/branch-dashboard?branch=${branch}`),
@@ -702,6 +731,9 @@ async function setupBranchInvoicesPage() {
   const invoicesTableWrap = document.getElementById("invoicesTableWrap");
   const invoiceResult = document.getElementById("invoiceResult");
   const invoiceCreateForm = document.getElementById("invoiceCreateForm");
+  const invoiceEmployeeSelect = invoiceCreateForm
+    ? invoiceCreateForm.elements.employeeId
+    : null;
   
   const invoiceDetailsModal = document.getElementById("invoiceDetailsModal");
   const closeInvoiceDetailsModal = document.getElementById("closeInvoiceDetailsModal");
@@ -732,6 +764,25 @@ async function setupBranchInvoicesPage() {
     invoiceResult,
   );
   attachInvoiceProductAutoFill(invoiceCreateForm, () => branch, invoiceResult);
+
+  async function loadEmployeeOptions() {
+    if (!invoiceEmployeeSelect) {
+      return;
+    }
+    try {
+      const result = await fetchJSON(`/api/employees?branch=${branch}`);
+      const employees = Array.isArray(result.data) ? result.data : [];
+      renderEmployeeSelectOptions(
+        invoiceEmployeeSelect,
+        employees,
+        "Chọn nhân viên",
+      );
+    } catch (error) {
+      if (invoiceResult) {
+        invoiceResult.textContent = `Lỗi: ${error.message}`;
+      }
+    }
+  }
 
   invoicesApiLine.textContent = `GET /api/invoices?branch=${branch}`;
 
@@ -788,6 +839,9 @@ async function setupBranchInvoicesPage() {
         if (!items.length) {
           throw new Error("Cần ít nhất 1 chi tiết hóa đơn");
         }
+        if (!payload.employeeId) {
+          throw new Error("Vui lòng chọn nhân viên");
+        }
         const result = await fetchJSON("/api/invoices", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -802,6 +856,7 @@ async function setupBranchInvoicesPage() {
       }
     });
 
+  await loadEmployeeOptions();
   await loadInvoices();
 }
 
@@ -819,6 +874,8 @@ async function setupBranchInventoryPage() {
   const inventoryUpdateForm = document.getElementById("inventoryUpdateForm");
 
   inventoryApiLine.textContent = `GET /api/inventory?branch=${branch}, PUT /api/inventory/:productCode?branch=${branch}`;
+
+// Hàm tải dữ liệu tồn kho cho chi nhánh, kết hợp thông tin sản phẩm để hiển thị tên và giá, sau đó hiển thị trong bảng có thể chọn để cập nhật số lượng tồn.
 
   async function loadInventory() {
     inventoryTableWrap.innerHTML =
@@ -1143,7 +1200,7 @@ async function setupCentralOverviewPage(options = {}) {
       },
     );
   }
-
+// Hàm tải dữ liệu doanh thu và phân tích liên quan cho trang tổng quan trung tâm, sau đó hiển thị chúng dưới dạng thẻ thống kê, biểu đồ và bảng có thể mở rộng để xem chi tiết.
   async function loadRevenue() {
     const [result, analytics] = await Promise.all([
       fetchJSON(`/api/revenue/national?branch=${requestBranch}`),
@@ -1338,12 +1395,6 @@ async function setupCentralEmployeesPage() {
   const updateForm = document.getElementById("centralEmployeeUpdateForm");
   const deleteForm = document.getElementById("centralEmployeeDeleteForm");
 
-  function syncFormsBranch(branch) {
-    createForm.elements.branch.value = branch;
-    updateForm.elements.branch.value = branch;
-    deleteForm.elements.branch.value = branch;
-  }
-
   async function loadEmployees() {
     const branch = readBranch.value;
     tableWrap.innerHTML = '<p class="subtitle">Đang tải nhân viên...</p>';
@@ -1352,7 +1403,9 @@ async function setupCentralEmployeesPage() {
       tableId: "central-local-employees",
       emptyMessage: "Chưa có nhân viên nào ở chi nhánh này.",
       onRowSelect: (row) => {
-        syncFormsBranch(row.ChiNhanh || branch);
+        if (row.ChiNhanh) {
+          readBranch.value = row.ChiNhanh;
+        }
         updateForm.elements.employeeId.value = row.MaNV || "";
         deleteForm.elements.employeeId.value = row.MaNV || "";
         updateForm.elements.HoTen.value = row.HoTen || "";
@@ -1362,7 +1415,6 @@ async function setupCentralEmployeesPage() {
   }
 
   readBranch.addEventListener("change", () => {
-    syncFormsBranch(readBranch.value);
     loadEmployees().catch((error) => {
       tableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
     });
@@ -1381,7 +1433,7 @@ async function setupCentralEmployeesPage() {
     event.preventDefault();
     const form = new FormData(createForm);
     const payload = {
-      branch: form.get("branch"),
+      branch: readBranch.value,
       MaNV: form.get("MaNV"),
       HoTen: form.get("HoTen"),
       ChucVu: form.get("ChucVu"),
@@ -1395,8 +1447,6 @@ async function setupCentralEmployeesPage() {
       });
       resultBox.textContent = JSON.stringify(result, null, 2);
       createForm.reset();
-      readBranch.value = payload.branch;
-      syncFormsBranch(payload.branch);
       await loadEmployees();
     } catch (error) {
       resultBox.textContent = `Lỗi: ${error.message}`;
@@ -1406,7 +1456,7 @@ async function setupCentralEmployeesPage() {
   updateForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(updateForm);
-    const branch = String(form.get("branch"));
+    const branch = readBranch.value;
     const employeeId = String(form.get("employeeId") || "").trim();
     const payload = {};
     if (String(form.get("HoTen") || "").trim()) {
@@ -1426,8 +1476,6 @@ async function setupCentralEmployeesPage() {
         },
       );
       resultBox.textContent = JSON.stringify(result, null, 2);
-      readBranch.value = branch;
-      syncFormsBranch(branch);
       await loadEmployees();
     } catch (error) {
       resultBox.textContent = `Lỗi: ${error.message}`;
@@ -1437,7 +1485,7 @@ async function setupCentralEmployeesPage() {
   deleteForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(deleteForm);
-    const branch = String(form.get("branch"));
+    const branch = readBranch.value;
     const employeeId = String(form.get("employeeId") || "").trim();
 
     try {
@@ -1449,15 +1497,12 @@ async function setupCentralEmployeesPage() {
       );
       resultBox.textContent = JSON.stringify(result, null, 2);
       deleteForm.reset();
-      readBranch.value = branch;
-      syncFormsBranch(branch);
       await loadEmployees();
     } catch (error) {
       resultBox.textContent = `Lỗi: ${error.message}`;
     }
   });
 
-  syncFormsBranch(readBranch.value);
   await loadEmployees();
 }
 
@@ -1471,6 +1516,7 @@ async function setupCentralInvoicesPage() {
   const resultBox = document.getElementById("centralInvoiceResult");
   const readBranch = document.getElementById("centralInvoicesReadBranch");
   const createForm = document.getElementById("centralInvoiceCreateForm");
+  const invoiceEmployeeSelect = createForm ? createForm.elements.employeeId : null;
 
   const centralInvoiceDetailsModal = document.getElementById("centralInvoiceDetailsModal");
   const closeCentralInvoiceDetailsModal = document.getElementById("closeCentralInvoiceDetailsModal");
@@ -1497,17 +1543,36 @@ async function setupCentralInvoicesPage() {
 
   const centralInvoiceItems = attachInvoiceLineItems(
     createForm,
-    () => String(createForm.elements.branch.value || ""),
+    () => String(readBranch.value || ""),
     resultBox,
   );
   attachInvoiceProductAutoFill(
     createForm,
-    () => String(createForm.elements.branch.value || ""),
+    () => String(readBranch.value || ""),
     resultBox,
   );
 
-  function syncFormsBranch(branch) {
-    createForm.elements.branch.value = branch;
+  async function loadEmployeeOptions(branch) {
+    if (!invoiceEmployeeSelect) {
+      return;
+    }
+    try {
+      const result = await fetchJSON(`/api/employees?branch=${branch}`);
+      const employees = Array.isArray(result.data) ? result.data : [];
+      renderEmployeeSelectOptions(
+        invoiceEmployeeSelect,
+        employees,
+        "Chọn nhân viên",
+      );
+    } catch (error) {
+      if (resultBox) {
+        resultBox.textContent = `Lỗi: ${error.message}`;
+      }
+    }
+  }
+
+  async function syncFormsBranch(branch) {
+    await loadEmployeeOptions(branch);
   }
 
   async function loadInvoices() {
@@ -1539,11 +1604,16 @@ async function setupCentralInvoicesPage() {
   }
 
   readBranch.addEventListener("change", () => {
-    syncFormsBranch(readBranch.value);
+    syncFormsBranch(readBranch.value).catch((error) => {
+      if (resultBox) {
+        resultBox.textContent = `Lỗi: ${error.message}`;
+      }
+    });
     loadInvoices().catch((error) => {
       tableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
     });
   });
+
 
   document
     .getElementById("loadCentralInvoices")
@@ -1563,13 +1633,16 @@ async function setupCentralInvoicesPage() {
       0,
     );
     const payload = {
-      branch: form.get("branch"),
+      branch: readBranch.value,
       employeeId: String(form.get("employeeId") || "").trim(),
       items,
       totalAmount,
       note: form.get("note"),
     };
     try {
+      if (!payload.employeeId) {
+        throw new Error("Vui lòng chọn nhân viên");
+      }
       if (!items.length) {
         throw new Error("Cần ít nhất 1 chi tiết hóa đơn");
       }
@@ -1581,15 +1654,13 @@ async function setupCentralInvoicesPage() {
       resultBox.textContent = JSON.stringify(result, null, 2);
       createForm.reset();
       centralInvoiceItems.resetItems();
-      readBranch.value = payload.branch;
-      syncFormsBranch(payload.branch);
       await loadInvoices();
     } catch (error) {
       resultBox.textContent = `Lỗi: ${error.message}`;
     }
   });
 
-  syncFormsBranch(readBranch.value);
+  await syncFormsBranch(readBranch.value);
   await loadInvoices();
 }
 
@@ -1605,10 +1676,7 @@ async function setupCentralInventoryPage() {
   const readBranch = document.getElementById("centralInventoryReadBranch");
   const updateForm = document.getElementById("centralInventoryUpdateForm");
 
-  function syncFormsBranch(branch) {
-    updateForm.elements.branch.value = branch;
-  }
-
+  
   async function loadInventory() {
     const branch = readBranch.value;
     tableWrap.innerHTML = '<p class="subtitle">Đang tải tồn kho...</p>';
@@ -1637,7 +1705,9 @@ async function setupCentralInventoryPage() {
       tableId: "central-local-inventory",
       emptyMessage: "Chưa có sản phẩm tồn kho ở chi nhánh này.",
       onRowSelect: (row) => {
-        syncFormsBranch(row.branch || branch);
+        if (row.branch) {
+          readBranch.value = row.branch;
+        }
         updateForm.elements.productCode.value = row.productCode || "";
         updateForm.elements.quantity.value = row.quantity || "";
       },
@@ -1645,7 +1715,6 @@ async function setupCentralInventoryPage() {
   }
 
   readBranch.addEventListener("change", () => {
-    syncFormsBranch(readBranch.value);
     loadInventory().catch((error) => {
       tableWrap.innerHTML = `<p class="subtitle">Lỗi: ${error.message}</p>`;
     });
@@ -1663,7 +1732,7 @@ async function setupCentralInventoryPage() {
   updateForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(updateForm);
-    const branch = String(form.get("branch"));
+    const branch = readBranch.value;
     const productCode = String(form.get("productCode") || "").trim();
     const payload = { quantity: Number(form.get("quantity") || 0) };
     try {
@@ -1676,15 +1745,12 @@ async function setupCentralInventoryPage() {
         },
       );
       resultBox.textContent = JSON.stringify(result, null, 2);
-      readBranch.value = branch;
-      syncFormsBranch(branch);
       await loadInventory();
     } catch (error) {
       resultBox.textContent = `Lỗi: ${error.message}`;
     }
   });
 
-  syncFormsBranch(readBranch.value);
   await loadInventory();
 }
 
