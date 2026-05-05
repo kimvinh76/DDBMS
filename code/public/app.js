@@ -882,7 +882,7 @@ async function setupBranchInventoryPage() {
       '<p class="subtitle">Đang tải tồn kho...</p>';
     const [result, products] = await Promise.all([
       fetchJSON(`/api/inventory?branch=${branch}`),
-      fetchJSON("/api/products"),
+      fetchJSON(`/api/products?branch=${branch}`),
     ]);
     const productMap = new Map(
       (Array.isArray(products) ? products : []).map((item) => [
@@ -952,12 +952,12 @@ async function setupBranchProductsPage() {
   const tableWrap = document.getElementById("branchProductsTableWrap");
   const reloadBtn = document.getElementById("reloadBranchProducts");
 
-  apiLine.textContent = "GET /api/products";
+  apiLine.textContent = `GET /api/products?branch=${branch}`;
 
   async function loadBranchProducts() {
     tableWrap.innerHTML =
       '<p class="subtitle">Đang tải danh sách sản phẩm...</p>';
-    const products = await fetchJSON("/api/products");
+    const products = await fetchJSON(`/api/products?branch=${branch}`);
     const rows = (Array.isArray(products) ? products : []).map((item) => ({
       productCode: item.productCode,
       productName: item.productName,
@@ -1682,7 +1682,7 @@ async function setupCentralInventoryPage() {
     tableWrap.innerHTML = '<p class="subtitle">Đang tải tồn kho...</p>';
     const [result, products] = await Promise.all([
       fetchJSON(`/api/inventory?branch=${branch}`),
-      fetchJSON("/api/products"),
+      fetchJSON(`/api/products?branch=${branch}`),
     ]);
     const productMap = new Map(
       (Array.isArray(products) ? products : []).map((item) => [
@@ -1769,7 +1769,7 @@ async function setupCentralProductsPage() {
 
   async function loadProducts() {
     tableWrap.innerHTML = '<p class="subtitle">Đang tải danh sách sản phẩm...</p>';
-    const result = await fetchJSON("/api/products");
+    const result = await fetchJSON("/api/products?branch=CENTRAL");
     renderTable(tableWrap, result, {
       tableId: "central-products",
       emptyMessage: "Chưa có sản phẩm.",

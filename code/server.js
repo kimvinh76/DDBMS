@@ -349,7 +349,13 @@ app.get("/api/inventory", async (req, res) => {
 
 app.get("/api/products", async (req, res) => {
   try {
-    const data = await listProducts();
+    const branch = req.query.branch
+      ? normalizeBranch(req.query.branch)
+      : "CENTRAL";
+    if (!branch) {
+      return res.status(400).json({ message: "branch is invalid" });
+    }
+    const data = await listProducts(branch);
     return res.json(data);
   } catch (error) {
     if (error.message.includes("Login failed")) {

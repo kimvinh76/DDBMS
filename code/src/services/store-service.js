@@ -571,11 +571,10 @@ async function getProductByCode(branch, productCode) {
   // Kết nối thẳng vào DB của chi nhánh truyền xuống (có thể là HUE, SAIGON...)
   const pool = await getPool(branch);
   const commonProcs = commonProcNames();
-
   const rs = await pool
     .request()
     .input("MaSP", sql.VarChar(50), code)
-    .execute(commonProcs.productByCode); // Gọi Proc dùng chung
+    .execute(commonProcs.productByCode);
 
   const row = rs.recordset[0] || null;
   if (!row) return null;
