@@ -354,6 +354,8 @@ async function createInvoice(payload) {
   };
 }
 
+// tác vụ toàn cục từ HUE/SAIGON/HANOI 
+
 /**
  * TỔNG QUAN DOANH THU TOÀN QUỐC & TỶ TRỌNG
    Chức năng: Tính tổng doanh thu toàn hệ thống và phân bổ doanh thu theo từng chi nhánh.

@@ -1,6 +1,6 @@
 
 
-/* CENTRAL NODE (CentralDB)  có thể chỉ chạy cái này sau đó làm publication tự tạo 3 db còn lại */
+/* CENTRAL NODE (CentralDB)  có thể chỉ chạy cái này sau đó làm publication ,subsciption...  sẽ tự tạo 3 db còn lại */
 USE CentralDB;
 GO
 

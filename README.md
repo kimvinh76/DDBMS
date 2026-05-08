@@ -1,49 +1,64 @@
-# Huong Dan Chay DDBMS Bang SQL Server 
+﻿# DDBMS - Huong Dan Cai Dat Nhanh
 
 
 
-## 1. Yeu cau
+## 1. Yêu cầu
 
 - Node.js 18+
 - SQL Server + SSMS
-- Project source trong thu muc code
+- Đã bật TCP/IP trong SQL Server Configuration Manager
 
-## 2. Cai dat project
+## 2 Chuẩn bị SQL
 
-1. Mo terminal tai thu muc code
-2. Chay lenh:
+Trước khi chạy script, cần tạo sẵn 4 database đúng tên:
 
-```bash
-cd code
-npm install
-npm run dev
-```
+- `Store_H`
+- `Store_SG`
+- `Store_HN`
+- `CentralDB`
 
-## 3. Tao schema va seed du lieu
+Lưu ý quan trọng:
+- File `maindb.sql` dùng lệnh `USE <DB>`, nên nếu chưa có đúng tên database thì script sẽ lỗi ngay.
 
-1. Mo file code/SQLQuery3.sql bang SSMS
-2. Chay  script tạo các db trên các server khác nhau, tạo db Central trước, sau đó tạo db cho 3 server còn lại
-3. Script se tao/lam moi bang theo mo hinh:
-   - ChiNhanh
-   - NhanVien
-   - HangHoa
-   - HoaDon 
-   - ChiTietHoaDon
-   - TonKho
+Trong thư mục `code`, chạy lần lượt các file SQL sau trong SSMS:
 
-Ghi chu ngan:
-- Central da co bo seed lon hon (NhanVien/HoaDon/ChiTietHoaDon)
-- ChiTietHoaDon co nhieu dong hon HoaDon de demo bao cao
+1. `maindb.sql` (tạo bảng và dữ liệu nền)
+2. `STOREPROCEDUREHUE.sql` (proc cho chi nhánh HUE)
+3. `STOREPROCEDURESAIGON.sql` (proc cho chi nhánh SAIGON)
+4. `STOREPROCEDUREHANOI.sql` (proc cho chi nhánh HANOI)
+5. `STOREPROCEDURECENTRAL.sql` (proc cho CENTRAL)
 
-## 4. Tao file env mới theo may ban
+## 3. Cấu hình host/port trong SSMS
 
-1. Copy file code/.env.example thanh code/.env
-2. Chi dung cho may thuong : de tat ca *_DB_HOST=localhost
-3. Dat MOCK_MODE=false de chay SQL that
-4. Doi tat ca *_DB_PASSWORD theo mat khau SQL cua may ban
-- Nho mo SQL Server Configuration Manager -> SQL Server Network Configuration -> Protocols -> TCP/IP, va dat dung TCP Port (1401/1402/1403/1404 theo cau hinh).
+### 3.1 Kiểm tra instance trong SSMS
 
-Mau toi thieu:
+- Server Name có dạng: `MAY\INSTANCE`
+- Ví dụ: `DESKTOP-GVGU8JJ\MSSQLSERVER02`, `DESKTOP-GVGU8JJ\MSSQLSERVER05`
+
+### 3.2 Đặt TCP Port cho từng instance
+
+1. Mở SQL Server Configuration Manager.
+2. Vào `SQL Server Network Configuration` -> `Protocols for <INSTANCE>`.
+3. Enable `TCP/IP`.
+4. Mở `TCP/IP` -> `Properties` -> tab `IP Addresses`.
+5. Ở `IPAll`:
+   - `TCP Dynamic Ports` = rỗng
+   - `TCP Port` = port muốn dùng (ví dụ 1401/1402/1403/1404)
+6. Restart lại service SQL của instance đó.
+
+### 3.3 Map vào `.env`
+
+- `*_DB_HOST`: tên máy hoặc IP (ví dụ `localhost` hoặc `DESKTOP-GVGU8JJ`)
+- `*_DB_PORT`: port vừa đặt cho instance đó
+
+Lưu ý quan trọng:
+- Nếu host/port trên máy bạn khác, chỉ cần sửa lại trong `.env` cho đúng.
+
+## 4. Tạo file môi trường
+
+Copy `code/.env.example` thành `code/.env`.
+
+Sửa tối thiểu các giá trị kết nối SQL theo máy bạn:
 
 ```env
 PORT=3000
@@ -78,29 +93,36 @@ LINKED_SAIGON=SG_SERVER
 LINKED_HANOI=HN_SERVER
 ```
 
-## 5. Linked Server (co the lam bang GUI như báo cáo tham khảo )
+Lưu ý quan trọng:
+- Mật khẩu SQL trong `.env` phải đúng với tài khoản SQL Server (ví dụ `sa`).
 
+## 5. Linked server theo mô hình bạn đang dùng
 
-file sqlquery1.sql dùng tạo linked server trong ssms
+Mô hình hiện tại:
+- Không bắt buộc tạo linked server ở CENTRAL.
+- Tạo linked server trực tiếp ở từng chi nhánh để gọi qua chi nhánh khác.
 
-từ central đến các chi nhánh
+Ví dụ:
+- Ở node HUE có `LINK_SAIGON`, `LINK_HANOI`
+- Ở node SAIGON có `LINK_HUE`, `LINK_HANOI`
+- Ở node HANOI có `LINK_HUE`, `LINK_SAIGON`
 
-(chủ yếu cho code chạy tính năng gửi số lượng tồn kho từ chi nhánh này sang chi nhánh khác)
+Lưu ý quan trọng:
+- Tên linked server trong proc/view phải khớp đúng với tên đã tạo trên node đó.
 
-Ban can linked server neu dung cac chuc nang toan cuc tai Central:
-- Danh sach nhan vien toan quoc
-- Bao cao doanh thu toan quoc
-- Chuyen kho phan tan
+## 6. Chạy ứng dụng
 
+Tại thư mục `code`:
 
+```bash
+npm install
+npm run dev
+```
 
+Mở trình duyệt: `http://localhost:3000`
 
-## 6. Luu y quan trong
+## 7. Nếu không kết nối được SQL
 
-- code/.env la file rieng tung may, khong dung chung gia tri cho tat ca
-
-- .env.example la mau chung cho team
-
-- Nho mo SQL Server Configuration Manager -> SQL Server Network Configuration -> Protocols -> TCP/IP, va dat dung TCP Port (1401/1402/1403/1404 theo cau hinh).
-
-- Mat khau `sa` trong SQL Server phai trung voi tat ca bien *_DB_PASSWORD trong code/.env.
+- Kiểm tra SQL Server service đang chạy
+- Kiểm tra TCP/IP đã bật
+- Kiểm tra lại host/port/user/password trong `code/.env`
