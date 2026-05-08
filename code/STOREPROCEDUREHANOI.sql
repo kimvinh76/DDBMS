@@ -474,7 +474,8 @@ BEGIN
         FROM dbo.TonKho t
         JOIN Agg a ON a.MaSP = t.MaSP
         WHERE t.ChiNhanh = 'HANOI';
-
+		SELECT * FROM dbo.HoaDon WHERE MaHD = @MaHD;
+SELECT * FROM dbo.ChiTietHoaDon WHERE MaHD = @MaHD;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -513,7 +514,7 @@ GO
 
 
 
-CREATE OR ALTER PROCEDURE dbo.usp_Local_DanhSachHangHoa
+CREATE OR ALTER PROCEDURE dbo.usp_Chung_DanhSachHangHoa
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -525,9 +526,10 @@ BEGIN
     FROM dbo.HangHoa
     ORDER BY MaSP;
 END;
-GO
+GO 
 
-CREATE OR ALTER PROCEDURE dbo.usp_Local_HangHoaTheoMaSP
+
+CREATE OR ALTER PROCEDURE dbo.usp_Chung_HangHoaTheoMaSP
     @MaSP VARCHAR(50)
 AS
 BEGIN
@@ -536,12 +538,14 @@ BEGIN
     IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
         THROW 50000, N'Mã sản phẩm không được để trống!', 1;
 
-    SELECT TOP 1 MaSP, TenHang, CAST(Gia AS DECIMAL(10,2)) AS Gia
+    SELECT TOP 1 
+        MaSP, 
+        TenHang, 
+        CAST(Gia AS DECIMAL(10,2)) AS Gia
     FROM dbo.HangHoa
     WHERE MaSP = @MaSP;
 END;
 GO
-
 
 CREATE OR ALTER PROCEDURE dbo.usp_Local_CapNhatTonKhoTongQuat
     @MaSP VARCHAR(50),
@@ -581,4 +585,65 @@ GO
 CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardTongQuan
 AS
 BEGIN
-    SET NOCOUN
+    SET NOCOUNT ON;
+
+    SELECT
+        (SELECT COUNT(1) FROM dbo.NhanVien WHERE ChiNhanh = 'HANOI') AS employeeCount,
+        (SELECT COUNT(1) FROM dbo.HoaDon WHERE ChiNhanh = 'HANOI') AS invoiceCount,
+        (
+            SELECT ISNULL(SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))), 0)
+            FROM dbo.HoaDon hd
+            INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+            WHERE hd.ChiNhanh = 'HANOI'
+        ) AS revenue,
+        (SELECT ISNULL(SUM(SoLuongTon), 0) FROM dbo.TonKho WHERE ChiNhanh = 'HANOI') AS totalStockUnits,
+        (
+            SELECT ISNULL(SUM(CASE WHEN SoLuongTon < 50 THEN 1 ELSE 0 END), 0)
+            FROM dbo.TonKho
+            WHERE ChiNhanh = 'HANOI'
+        ) AS lowStockProducts;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardDoanhThu7Ngay
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH Last7Days AS (
+        SELECT CAST(DATEADD(DAY, v.n * -1, CAST(GETDATE() AS DATE)) AS DATE) AS Ngay
+        FROM (VALUES (0), (1), (2), (3), (4), (5), (6)) v(n)
+    )
+    SELECT
+        d.Ngay,
+        ISNULL(SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))), 0) AS DoanhThu
+    FROM Last7Days d
+    LEFT JOIN dbo.HoaDon hd
+      ON CAST(hd.NgayTao AS DATE) = d.Ngay
+     AND hd.ChiNhanh = 'HANOI'
+    LEFT JOIN dbo.ChiTietHoaDon ct
+      ON ct.MaHD = hd.MaHD
+    GROUP BY d.Ngay
+    ORDER BY d.Ngay;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardTopTonKho
+    @TopN INT = 8
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @TopN IS NULL OR @TopN <= 0
+        SET @TopN = 8;
+
+    SELECT TOP (@TopN)
+        tk.MaSP,
+        hh.TenHang,
+        tk.SoLuongTon
+    FROM dbo.TonKho tk
+    LEFT JOIN dbo.HangHoa hh ON hh.MaSP = tk.MaSP
+    WHERE tk.ChiNhanh = 'HANOI'
+    ORDER BY tk.SoLuongTon DESC, tk.MaSP;
+END;
+GO

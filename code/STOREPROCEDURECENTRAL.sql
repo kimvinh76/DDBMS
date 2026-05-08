@@ -1,5 +1,9 @@
+﻿
+use CentralDB 
+GO 
 
-CREATE OR ALTER PROCEDURE dbo.usp_Central_DanhSachHangHoa
+
+CREATE OR ALTER PROCEDURE dbo.usp_Chung_DanhSachHangHoa
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -14,12 +18,7 @@ END;
 GO 
 
 
-EXEC dbo.usp_Central_DanhSachHangHoa;
-GO 
-
-
-
-CREATE OR ALTER PROCEDURE dbo.usp_Central_HangHoaTheoMaSP
+CREATE OR ALTER PROCEDURE dbo.usp_Chung_HangHoaTheoMaSP
     @MaSP VARCHAR(50)
 AS
 BEGIN
@@ -28,12 +27,13 @@ BEGIN
     IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
         THROW 50000, N'Mã sản phẩm không được để trống!', 1;
 
-    SELECT TOP 1 MaSP, TenHang, CAST(Gia AS DECIMAL(10,2)) AS Gia
+    SELECT TOP 1 
+        MaSP, 
+        TenHang, 
+        CAST(Gia AS DECIMAL(10,2)) AS Gia
     FROM dbo.HangHoa
     WHERE MaSP = @MaSP;
 END;
-GO
-EXEC dbo.usp_Central_HangHoaTheoMaSP @MaSP = 'MI_GOI';
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Central_ThemHangHoaMoi
@@ -83,6 +83,9 @@ GO
 EXEC dbo.usp_Central_ThemHangHoaMoi @MaSP = 'SP_TEST_01', @TenHang = N'Sản phẩm Test', @Gia = 25000;
 GO
 
+
+
+
 CREATE OR ALTER PROCEDURE dbo.usp_Central_CapNhatHangHoa
     @MaSP VARCHAR(50),
     @TenHang NVARCHAR(100) = NULL,
@@ -100,6 +103,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM dbo.HangHoa WHERE MaSP = @MaSP)
         THROW 50001, N'Không tìm thấy sản phẩm để cập nhật!', 1;
 
+    -- CHỈ CẦN CẬP NHẬT TẠI CENTRAL 
     UPDATE dbo.HangHoa
     SET TenHang = COALESCE(NULLIF(LTRIM(RTRIM(@TenHang)), ''), TenHang),
         Gia = COALESCE(@Gia, Gia)
@@ -110,11 +114,11 @@ BEGIN
     WHERE MaSP = @MaSP;
 END;
 GO
+
+select * from HangHoa WHERE MaSP = 'SP_TEST_01';
+
 EXEC dbo.usp_Central_CapNhatHangHoa @MaSP = 'SP_TEST_01', @TenHang = N'Sản phẩm Test Đã Sửa', @Gia = 30000;
 GO
-
-
-
 
 
 CREATE OR ALTER PROCEDURE dbo.usp_Central_XoaHangHoa
@@ -162,161 +166,7 @@ EXEC dbo.usp_Central_XoaHangHoa @MaSP = 'SP_TEST_01';
 GO
 
 
-
-CREATE OR ALTER PROCEDURE dbo.usp_Central_ThemNhanVien
-    @MaNV VARCHAR(50),
-    @HoTen NVARCHAR(120),
-    @ChucVu NVARCHAR(80),
-    @ChiNhanh VARCHAR(10)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NULLIF(LTRIM(RTRIM(@MaNV)), '') IS NULL
-        THROW 50000, N'Mã nhân viên không được để trống!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@HoTen)), '') IS NULL
-        THROW 50000, N'Họ tên không được để trống!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@ChucVu)), '') IS NULL
-        THROW 50000, N'Chức vụ không được để trống!', 1;
-
-    IF @ChiNhanh NOT IN ('HUE', 'SAIGON', 'HANOI')
-        THROW 50000, N'Chi nhánh không hợp lệ (HUE/SAIGON/HANOI)!', 1;
-
-    IF EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV)
-        THROW 50000, N'Mã nhân viên đã tồn tại!', 1;
-
-    INSERT INTO dbo.NhanVien (MaNV, HoTen, ChucVu, ChiNhanh)
-    VALUES (@MaNV, @HoTen, @ChucVu, @ChiNhanh);
-
-    SELECT TOP 1 * FROM dbo.NhanVien WHERE MaNV = @MaNV;
-END;
-GO
-EXEC dbo.usp_Central_ThemNhanVien @MaNV = 'NV_TEST_01', @HoTen = N'Nhân Viên Test', @ChucVu = N'Quản Lý', @ChiNhanh = 'SAIGON';
-GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_Central_CapNhatNhanVien
-    @MaNV VARCHAR(50),
-    @HoTen NVARCHAR(120) = NULL,
-    @ChucVu NVARCHAR(80) = NULL,
-    @ChiNhanh VARCHAR(10) = NULL
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NULLIF(LTRIM(RTRIM(@MaNV)), '') IS NULL
-        THROW 50000, N'Mã nhân viên không được để trống!', 1;
-
-    IF @ChiNhanh IS NOT NULL AND @ChiNhanh NOT IN ('HUE', 'SAIGON', 'HANOI')
-        THROW 50000, N'Chi nhánh không hợp lệ (HUE/SAIGON/HANOI)!', 1;
-
-    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV)
-        THROW 50001, N'Không tìm thấy nhân viên để cập nhật!', 1;
-
-    UPDATE dbo.NhanVien
-    SET HoTen = COALESCE(NULLIF(LTRIM(RTRIM(@HoTen)), ''), HoTen),
-        ChucVu = COALESCE(NULLIF(LTRIM(RTRIM(@ChucVu)), ''), ChucVu),
-        ChiNhanh = COALESCE(@ChiNhanh, ChiNhanh)
-    WHERE MaNV = @MaNV;
-
-    SELECT TOP 1 * FROM dbo.NhanVien WHERE MaNV = @MaNV;
-END;
-GO
-EXEC dbo.usp_Central_CapNhatNhanVien @MaNV = 'NV_TEST_01', @HoTen = N'Nhân Viên Đã Cập Nhật', @ChucVu = N'Thu Ngân', @ChiNhanh = 'HANOI';
-GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_Central_XoaNhanVien
-    @MaNV VARCHAR(50)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NULLIF(LTRIM(RTRIM(@MaNV)), '') IS NULL
-        THROW 50000, N'Mã nhân viên không được để trống!', 1;
-
-    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV)
-        THROW 50001, N'Không tìm thấy nhân viên để xóa!', 1;
-
-    DELETE FROM dbo.NhanVien
-    WHERE MaNV = @MaNV;
-
-    SELECT CAST(1 AS BIT) AS deleted, @MaNV AS MaNV;
-END;
-GO
-
-EXEC dbo.usp_Central_XoaNhanVien @MaNV = 'NV_TEST_01';
-GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_Central_TaoHoaDon
-    @MaHD VARCHAR(50),
-    @MaNV VARCHAR(50),
-    @MaSP VARCHAR(50),
-    @SoLuongMua INT,
-    @GhiChu NVARCHAR(255),
-    @ChiNhanhLap VARCHAR(10)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    IF @ChiNhanhLap NOT IN ('HUE', 'SAIGON', 'HANOI')
-        THROW 50000, N'Chi nhánh lập hóa đơn không hợp lệ!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaHD)), '') IS NULL
-        THROW 50000, N'Mã hóa đơn không được để trống!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaNV)), '') IS NULL
-        THROW 50000, N'Mã nhân viên không được để trống!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
-        THROW 50000, N'Mã sản phẩm không được để trống!', 1;
-
-    IF @SoLuongMua <= 0
-        THROW 50000, N'Số lượng mua phải lớn hơn 0!', 1;
-
-    DECLARE @DonGia DECIMAL(10,2);
-    SELECT @DonGia = Gia FROM dbo.HangHoa WHERE MaSP = @MaSP;
-
-    IF @DonGia IS NULL OR @DonGia <= 0
-        THROW 50001, N'Không tìm thấy giá sản phẩm hợp lệ trong bảng HangHoa!', 1;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = @ChiNhanhLap
-    )
-        THROW 50002, N'Nhân viên không tồn tại ở chi nhánh lập hóa đơn!', 1;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        IF (SELECT SoLuongTon FROM dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = @ChiNhanhLap) < @SoLuongMua
-            THROW 50003, N'Lỗi: Chi nhánh được chọn không đủ số lượng để bán!', 1;
-
-        IF NOT EXISTS (SELECT 1 FROM dbo.HoaDon WHERE MaHD = @MaHD)
-            INSERT INTO dbo.HoaDon (MaHD, GhiChu, ChiNhanh, MaNV)
-            VALUES (@MaHD, @GhiChu, @ChiNhanhLap, @MaNV);
-
-        INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
-        VALUES (@MaHD, @MaSP, @SoLuongMua, @DonGia);
-
-        UPDATE dbo.TonKho
-        SET SoLuongTon = SoLuongTon - @SoLuongMua
-        WHERE MaSP = @MaSP AND ChiNhanh = @ChiNhanhLap;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
-END;
-GO 
-
-EXEC dbo.usp_Central_TaoHoaDon @MaHD = 'HD_CENTRAL_TEST_11 ', @MaNV = 'H001', @MaSP = 'MI_GOI', @SoLuongMua = 5, @GhiChu = N'Admin Trung tâm bán hàng ', @ChiNhanhLap = 'HUE';
-GO
-
-
- CREATE OR ALTER PROCEDURE dbo.usp_Central_DieuChuyenKho
+CREATE OR ALTER PROCEDURE dbo.usp_Central_DieuChuyenKho
     @TuChiNhanh VARCHAR(10),
     @DenChiNhanh VARCHAR(10),
     @MaSP VARCHAR(50),
@@ -342,7 +192,7 @@ BEGIN
     IF @SoLuongChuyen <= 0
         THROW 50001, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
 
-    -- 2. Ánh xạ tên Linked Server và Database tương ứng
+    -- . Ánh xạ tên Linked Server và Database tương ứng
     DECLARE @SrcServer NVARCHAR(50), @SrcDB NVARCHAR(50);
     DECLARE @DestServer NVARCHAR(50), @DestDB NVARCHAR(50);
 
@@ -425,7 +275,7 @@ EXEC dbo.usp_Central_DieuChuyenKho
     @TuChiNhanh = 'HUE', 
     @DenChiNhanh = 'SAIGON', 
     @MaSP = 'MI_GOI', 
-    @SoLuongChuyen = 1;
+    @SoLuongChuyen = 3;
 
 
 
@@ -434,8 +284,16 @@ FROM dbo.TonKho
 WHERE MaSP = 'MI_GOI' AND ChiNhanh IN ('HUE', 'SAIGON')
 ORDER BY ChiNhanh;
 GO
+  
 
-CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuQuocGia
+
+
+
+
+
+
+
+  CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuQuocGia
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -449,7 +307,9 @@ BEGIN
     GROUP BY hd.ChiNhanh
     ORDER BY hd.ChiNhanh;
 END;
-GO
+GO 
+EXECUTE dbo.usp_Central_DoanhThuQuocGia;
+
 
 CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuVaSoDon_TheoNgay
 AS
@@ -468,6 +328,7 @@ BEGIN
     ORDER BY Ngay DESC, hd.ChiNhanh;
 END;
 GO
+EXECUTE dbo.usp_Central_DoanhThuVaSoDon_TheoNgay;
 
 CREATE OR ALTER PROCEDURE dbo.usp_Central_DoanhThuVaSoDon_TheoTuan
 AS
@@ -486,7 +347,8 @@ BEGIN
     GROUP BY hd.ChiNhanh, DATEPART(YEAR, hd.NgayTao), DATEPART(WEEK, hd.NgayTao)
     ORDER BY Nam DESC, TuanTrongNam DESC, hd.ChiNhanh;
 END;
-GO
+GO 
+ EXEC dbo.usp_Central_DoanhThuVaSoDon_TheoTuan;
 
 CREATE OR ALTER PROCEDURE dbo.usp_Central_NhanVienBanTotNhatTuan
 AS
@@ -516,7 +378,7 @@ BEGIN
     WHERE Hang = 1;
 END;
 GO
-
+ EXEC dbo.usp_Central_NhanVienBanTotNhatTuan;
 CREATE OR ALTER PROCEDURE dbo.usp_Central_SanPhamBanChayNhat_MoiChiNhanh
 AS
 BEGIN
@@ -545,6 +407,7 @@ BEGIN
     WHERE Hang = 1;
 END;
 GO
+ EXEC dbo.usp_Central_SanPhamBanChayNhat_MoiChiNhanh;
 
 CREATE OR ALTER PROCEDURE dbo.usp_Central_SoSanhDoanhThuTuan
 AS
@@ -567,5 +430,5 @@ BEGIN
 END;
 GO
 
-
+ EXEC dbo.usp_Central_SoSanhDoanhThuTuan;
 

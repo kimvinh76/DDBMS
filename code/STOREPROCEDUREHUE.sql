@@ -2,7 +2,6 @@
 GO
 
 
-
 /* ===== PHẦN 1: VIEW TOÀN CỤC ===== */
 CREATE OR ALTER VIEW dbo.v_NhanVien_ToanQuoc AS
 SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM dbo.NhanVien
@@ -10,7 +9,9 @@ UNION ALL
 SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM [LINK_SAIGON].[Store_SG].dbo.NhanVien
 UNION ALL
 SELECT MaNV, HoTen, ChucVu, ChiNhanh FROM [LINK_HANOI].[Store_HN].dbo.NhanVien;
-GO
+GO 
+SELECT * FROM dbo.v_NhanVien_ToanQuoc;
+
 
 CREATE OR ALTER VIEW dbo.v_HoaDonChiTiet_ToanQuoc AS
 SELECT hd.MaHD, hd.NgayTao, hd.ChiNhanh, hd.MaNV, ct.MaSP, ct.SoLuong, ct.DonGia,
@@ -28,6 +29,7 @@ SELECT hd.MaHD, hd.NgayTao, hd.ChiNhanh, hd.MaNV, ct.MaSP, ct.SoLuong, ct.DonGia
 FROM [LINK_HANOI].[Store_HN].dbo.HoaDon hd
 JOIN [LINK_HANOI].[Store_HN].dbo.ChiTietHoaDon ct ON hd.MaHD = ct.MaHD;
 GO
+SELECT * FROM dbo.v_HoaDonChiTiet_ToanQuoc;
 
 CREATE OR ALTER VIEW dbo.v_TonKho_ToanQuoc AS
 SELECT MaSP, SoLuongTon, ChiNhanh FROM dbo.TonKho
@@ -36,6 +38,8 @@ SELECT MaSP, SoLuongTon, ChiNhanh FROM [LINK_SAIGON].[Store_SG].dbo.TonKho
 UNION ALL
 SELECT MaSP, SoLuongTon, ChiNhanh FROM [LINK_HANOI].[Store_HN].dbo.TonKho;
 GO
+
+SELECT * FROM dbo.v_TonKho_ToanQuoc;
 
 /* ===== PHẦN 2: PROC BÁO CÁO TOÀN CỤC ===== */
 CREATE OR ALTER PROCEDURE dbo.usp_DanhSachNhanVienToanHeThong
@@ -332,75 +336,7 @@ GO
  EXEC dbo.usp_Local_ChiTietHoaDon @MaHD = 'HD_1774933900848';
  GO
 
-CREATE OR ALTER PROCEDURE dbo.usp_Local_TaoHoaDon
-    @MaHD VARCHAR(50),
-    @MaNV VARCHAR(50),
-    @MaSP VARCHAR(50),
-    @SoLuongMua INT,
-    @GhiChu NVARCHAR(255),
-    @ChiNhanhLap VARCHAR(10)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
 
-    IF @ChiNhanhLap <> 'HUE'
-        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''HUE''.', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaHD)), '') IS NULL
-        THROW 50000, N'Mã hóa đơn không được để trống!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaNV)), '') IS NULL
-        THROW 50000, N'Mã nhân viên không được để trống!', 1;
-
-    IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
-        THROW 50000, N'Mã sản phẩm không được để trống!', 1;
-
-    IF @SoLuongMua <= 0
-        THROW 50000, N'Số lượng mua phải lớn hơn 0!', 1;
-
-    DECLARE @DonGia DECIMAL(10,2);
-    SELECT @DonGia = Gia FROM dbo.HangHoa WHERE MaSP = @MaSP;
-
-    IF @DonGia IS NULL OR @DonGia <= 0
-        THROW 50001, N'Không tìm thấy giá sản phẩm hợp lệ trong bảng HangHoa!', 1;
-
-    IF NOT EXISTS (SELECT 1 FROM dbo.NhanVien WHERE MaNV = @MaNV AND ChiNhanh = 'HUE')
-        THROW 50002, N'Nhân viên không tồn tại ở chi nhánh HUE!', 1;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        IF (SELECT SoLuongTon FROM dbo.TonKho WHERE MaSP = @MaSP AND ChiNhanh = 'HUE') < @SoLuongMua
-            THROW 50003, N'Kho cục bộ không đủ số lượng để bán!', 1;
-
-        IF NOT EXISTS (SELECT 1 FROM dbo.HoaDon WHERE MaHD = @MaHD)
-            INSERT INTO dbo.HoaDon (MaHD, GhiChu, ChiNhanh, MaNV)
-            VALUES (@MaHD, @GhiChu, 'HUE', @MaNV);
-
-        INSERT INTO dbo.ChiTietHoaDon (MaHD, MaSP, SoLuong, DonGia)
-        VALUES (@MaHD, @MaSP, @SoLuongMua, @DonGia);
-
-        UPDATE dbo.TonKho
-        SET SoLuongTon = SoLuongTon - @SoLuongMua
-        WHERE MaSP = @MaSP AND ChiNhanh = 'HUE';
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
-END;
-GO 
- EXEC dbo.usp_Local_TaoHoaDon 
-     @MaHD = 'HD_TEST_HUE_SINGLE_01', 
-     @MaNV = 'H001', 
-     @MaSP = 'MI_GOI', 
-     @SoLuongMua = 2, 
-     @GhiChu = N'Test tạo đơn 1 dòng', 
-     @ChiNhanhLap = 'HUE';
- GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_Local_TaoHoaDonNhieuDong
     @MaHD VARCHAR(50),
@@ -512,7 +448,9 @@ BEGIN
         FROM dbo.TonKho t
         JOIN Agg a ON a.MaSP = t.MaSP
         WHERE t.ChiNhanh = 'HUE';
-
+		
+SELECT * FROM dbo.HoaDon WHERE MaHD = @MaHD;
+SELECT * FROM dbo.ChiTietHoaDon WHERE MaHD = @MaHD;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -523,15 +461,20 @@ END;
 GO
 
  EXEC dbo.usp_Local_TaoHoaDonNhieuDong 
-     @MaHD = 'HD_TEST_HUE_JSON_01', 
-     @MaNV = 'H001', 
-     @GhiChu = N'Test tạo đơn nhiều dòng', 
+     @MaHD = 'HD_taomoi ', 
+     @MaNV = 'H003', 
+     @GhiChu = N'Test tạo đơn hàng ', 
      @ChiNhanhLap = 'HUE', 
      @ItemsJson = N'[
-         {"MaSP": "MI_GOI", "SoLuong": 2}, 
-         {"MaSP": "NUOC_SUOI", "SoLuong": 1}
+         {"MaSP": "MI_GOI", "SoLuong": 3}, 
+         {"MaSP": "NUOC_SUOI", "SoLuong": 3 },
+		 {"MaSP": "SUA_HOP", "SoLuong": 4 }
      ]';
 GO 
+SELECT * FROM dbo.HoaDon WHERE MaHD = 'HD_Taomoi';
+SELECT * FROM dbo.ChiTietHoaDon WHERE MaHD = 'HD_Taomoi';
+
+
 
 CREATE OR ALTER PROCEDURE dbo.usp_Local_DanhSachTonKho
 AS
@@ -565,7 +508,8 @@ EXEC dbo.usp_Local_TonKhoTheoMaSP @MaSP = 'MI_GOI';
  GO
 
 
-CREATE OR ALTER PROCEDURE dbo.usp_Local_DanhSachHangHoa
+
+CREATE OR ALTER PROCEDURE dbo.usp_Chung_DanhSachHangHoa
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -578,15 +522,156 @@ BEGIN
     ORDER BY MaSP;
 END;
 GO 
+EXEC dbo.usp_Chung_DanhSachHangHoa
+GO
 
- EXEC dbo.usp_Local_DanhSachHangHoa;
- GO
-
-CREATE OR ALTER PROCEDURE dbo.usp_Local_HangHoaTheoMaSP
+CREATE OR ALTER PROCEDURE dbo.usp_Chung_HangHoaTheoMaSP
     @MaSP VARCHAR(50)
 AS
 BEGIN
     SET NOCOUNT ON;
 
     IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
-        THROW 
+        THROW 50000, N'Mã sản phẩm không được để trống!', 1;
+
+    SELECT TOP 1 
+        MaSP, 
+        TenHang, 
+        CAST(Gia AS DECIMAL(10,2)) AS Gia
+    FROM dbo.HangHoa
+    WHERE MaSP = @MaSP;
+END;
+GO
+
+EXEC dbo.usp_Chung_HangHoaTheoMaSP @MaSP = 'MI_GOI';
+ GO
+
+
+
+ CREATE OR ALTER PROCEDURE dbo.usp_Local_CapNhatTonKhoTongQuat
+    @MaSP VARCHAR(50),
+    @SoLuongTonMoi INT,
+    @ChiNhanhLap VARCHAR(10)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF @ChiNhanhLap <> 'HUE'
+        THROW 50000, N'Procedure local chỉ cho phép @ChiNhanhLap = ''HUE''.', 1;
+
+    IF NULLIF(LTRIM(RTRIM(@MaSP)), '') IS NULL
+        THROW 50000, N'Mã sản phẩm không được để trống!', 1;
+
+    IF @SoLuongTonMoi < 0
+        THROW 50000, N'Số lượng tồn mới phải >= 0!', 1;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM dbo.TonKho
+        WHERE MaSP = @MaSP AND ChiNhanh = 'HUE'
+    )
+        THROW 50001, N'Sản phẩm không tồn tại trong kho của chi nhánh này!', 1;
+
+    UPDATE dbo.TonKho
+    SET SoLuongTon = @SoLuongTonMoi
+    WHERE MaSP = @MaSP AND ChiNhanh = 'HUE';
+
+    SELECT TOP 1 MaSP, SoLuongTon
+    FROM dbo.TonKho
+    WHERE MaSP = @MaSP AND ChiNhanh = 'HUE';
+END;
+GO
+
+SELECT MaSP, SoLuongTon AS TonKho_Cu 
+FROM dbo.TonKho 
+WHERE MaSP = 'MI_GOI' AND ChiNhanh = 'HUE';
+
+
+EXEC dbo.usp_Local_CapNhatTonKhoTongQuat 
+    @MaSP = 'MI_GOI', 
+    @SoLuongTonMoi = 150, 
+    @ChiNhanhLap = 'HUE';
+
+
+SELECT MaSP, SoLuongTon AS TonKho_Moi 
+FROM dbo.TonKho 
+WHERE MaSP = 'MI_GOI' AND ChiNhanh = 'HUE';
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardTongQuan
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        (SELECT COUNT(1) FROM dbo.NhanVien WHERE ChiNhanh = 'HUE') AS employeeCount,
+        (SELECT COUNT(1) FROM dbo.HoaDon WHERE ChiNhanh = 'HUE') AS invoiceCount,
+        (
+            SELECT ISNULL(SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))), 0)
+            FROM dbo.HoaDon hd
+            INNER JOIN dbo.ChiTietHoaDon ct ON ct.MaHD = hd.MaHD
+            WHERE hd.ChiNhanh = 'HUE'
+        ) AS revenue,
+        (SELECT ISNULL(SUM(SoLuongTon), 0) FROM dbo.TonKho WHERE ChiNhanh = 'HUE') AS totalStockUnits,
+        (
+            SELECT ISNULL(SUM(CASE WHEN SoLuongTon < 50 THEN 1 ELSE 0 END), 0)
+            FROM dbo.TonKho
+            WHERE ChiNhanh = 'HUE'
+        ) AS lowStockProducts;
+END;
+GO 
+-- Xem tổng nhân viên, tổng hóa đơn, tổng doanh thu và hàng sắp hết (dưới 50)
+EXEC dbo.usp_Local_DashboardTongQuan;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardDoanhThu7Ngay
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH Last7Days AS (
+        SELECT CAST(DATEADD(DAY, v.n * -1, CAST(GETDATE() AS DATE)) AS DATE) AS Ngay
+        FROM (VALUES (0), (1), (2), (3), (4), (5), (6)) v(n)
+    )
+    SELECT
+        d.Ngay,
+        ISNULL(SUM(CAST(ct.SoLuong * ct.DonGia AS DECIMAL(18,2))), 0) AS DoanhThu
+    FROM Last7Days d
+    LEFT JOIN dbo.HoaDon hd
+      ON CAST(hd.NgayTao AS DATE) = d.Ngay
+     AND hd.ChiNhanh = 'HUE'
+    LEFT JOIN dbo.ChiTietHoaDon ct
+      ON ct.MaHD = hd.MaHD
+    GROUP BY d.Ngay
+    ORDER BY d.Ngay;
+END;
+GO 
+EXEC dbo.usp_Local_DashboardDoanhThu7Ngay;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.usp_Local_DashboardTopTonKho
+    @TopN INT = 8
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @TopN IS NULL OR @TopN <= 0
+        SET @TopN = 8;
+
+    SELECT TOP (@TopN)
+        tk.MaSP,
+        hh.TenHang,
+        tk.SoLuongTon
+    FROM dbo.TonKho tk
+    LEFT JOIN dbo.HangHoa hh ON hh.MaSP = tk.MaSP
+    WHERE tk.ChiNhanh = 'HUE'
+    ORDER BY tk.SoLuongTon DESC, tk.MaSP;
+END;
+GO
+
+EXEC dbo.usp_Local_DashboardTopTonKho;
+GO
+-- Truyền tham số tùy chỉnh để xem đúng 3 món
+EXEC dbo.usp_Local_DashboardTopTonKho @TopN = 3;
+GO
