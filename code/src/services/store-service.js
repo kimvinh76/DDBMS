@@ -111,20 +111,14 @@ async function listEmployeesByBranch(branch) {
 async function createEmployee(branch, payload) {
   if (isMockMode()) return mock.createEmployee(branch, payload);
 
-  //  Xác định đúng chi nhánh đích để mở Pool
-  // Nếu gọi từ CENTRAL, lấy targetBranch từ payload. Nếu gọi từ Local, lấy chính nó.
-  const targetBranch = branch === "CENTRAL" 
-    ? String(payload.ChiNhanh || payload.branch || "").trim().toUpperCase() 
-    : branch;
-
-  if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
+  if (!["HUE", "SAIGON", "HANOI"].includes(branch)) {
     throw new Error("ChiNhanh is required and must be HUE/SAIGON/HANOI");
   }
 
   // Kết nối TRỰC TIẾP tới Database chi nhánh đích
-  const pool = await getPool(targetBranch);
+  const pool = await getPool(branch);
   const localProcs = localProcNamesByBranch();
-  const maNV = payload.MaNV || `${targetBranch[0]}${String(Date.now()).slice(-4)}`;
+  const maNV = payload.MaNV || `${branch[0]}${String(Date.now()).slice(-4)}`;
 
   // Chỉ gọi duy nhất 1 Proc của chi nhánh Local
   const rs = await pool
@@ -141,16 +135,12 @@ async function createEmployee(branch, payload) {
 async function updateEmployee(branch, employeeId, payload) {
   if (isMockMode()) return mock.updateEmployee(branch, employeeId, payload);
 
-  const targetBranch = branch === "CENTRAL" 
-    ? String(payload.ChiNhanh || payload.branch || "").trim().toUpperCase() 
-    : branch;
-
-  if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
+  if (!["HUE", "SAIGON", "HANOI"].includes(branch)) {
     throw new Error("ChiNhanh is required and must be HUE/SAIGON/HANOI");
   }
 
   // Kết nối TRỰC TIẾP tới Database chi nhánh đích
-  const pool = await getPool(targetBranch);
+  const pool = await getPool(branch);
   const localProcs = localProcNamesByBranch();
 
   const rs = await pool
@@ -161,7 +151,7 @@ async function updateEmployee(branch, employeeId, payload) {
     .execute(localProcs.updateEmployee);
 
   if (!rs.recordset || !rs.recordset.length) {
-    throw new Error(`Employee ${employeeId} not found in ${targetBranch}`);
+    throw new Error(`Employee ${employeeId} not found in ${branch}`);
   }
   return rs.recordset[0];
 }
@@ -170,16 +160,11 @@ async function updateEmployee(branch, employeeId, payload) {
 async function deleteEmployee(branch, employeeId, payload) {
   if (isMockMode()) return mock.deleteEmployee(branch, employeeId);
 
-  // Khi xóa từ Central, Front-end cần gửi kèm ChiNhanh của nhân viên đó
-  const targetBranch = branch === "CENTRAL" 
-    ? String(payload?.ChiNhanh || payload?.branch || "").trim().toUpperCase() 
-    : branch;
-
-  if (!["HUE", "SAIGON", "HANOI"].includes(targetBranch)) {
-    throw new Error("ChiNhanh is required to delete employee from CENTRAL");
+  if (!["HUE", "SAIGON", "HANOI"].includes(branch)) {
+    throw new Error("ChiNhanh is required and must be HUE/SAIGON/HANOI");
   }
 
-  const pool = await getPool(targetBranch);
+  const pool = await getPool(branch);
   const localProcs = localProcNamesByBranch();
 
   // Đọc dữ liệu trước khi xóa để trả về cho UI
@@ -189,7 +174,7 @@ async function deleteEmployee(branch, employeeId, payload) {
     .query("SELECT TOP 1 * FROM NhanVien WHERE MaNV = @MaNV;");
 
   if (!beforeDelete.recordset.length) {
-    throw new Error(`Employee ${employeeId} not found in ${targetBranch}`);
+    throw new Error(`Employee ${employeeId} not found in ${branch}`);
   }
 
   // Gọi Proc Local để xóa
@@ -534,7 +519,7 @@ async function listInventory(branch, productCode) {
   const pool = await getPool(branch);
   const procs = localProcNamesByBranch();
 
-  // 1. Trường hợp không truyền productCode (Lấy tất cả)
+  //  Trường hợp không truyền productCode (Lấy tất cả)
   if (!productCode) {
     const rows = await pool.request().execute(procs.listInventory);
     return rows.recordset.map((row) => ({
@@ -544,7 +529,7 @@ async function listInventory(branch, productCode) {
     }));
   }
 
-  // 2. Trường hợp có truyền productCode (Lấy 1 sản phẩm)
+  //  Trường hợp có truyền productCode (Lấy 1 sản phẩm)
   const result = await pool
     .request()
     .input("MaSP", sql.VarChar(50), productCode)
@@ -782,7 +767,7 @@ async function getBranchDashboard(branch) {
     generatedAt: new Date().toISOString(),
   };
 }
-
+//chuyển tồn kho 2 chi nhánh 
 async function transferStockDistributed(payload) {
   if (isMockMode()) {
     return mock.transferStock(payload);
