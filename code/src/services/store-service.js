@@ -225,9 +225,11 @@ async function createInvoice(payload) {
     return mock.createInvoiceLocal(payload);
   }
 
-  // 2. Mặc định dùng Stored Procedure 
+  // payload: { branch, employeeId, note, items[] or productCode/unitPrice/quantity }
+  // Mặc định dùng Stored Procedure ở DB chi nhánh
   const pool = await getPool(payload.branch);
   const procs = localProcNamesByBranch();
+  // Tạo mã hóa đơn theo timestamp (đảm bảo unique ở nhánh hiện tại)
   const maHD = `HD_${Date.now()}`;
   const employeeId = String(payload.employeeId || "").trim();
 
@@ -235,7 +237,9 @@ async function createInvoice(payload) {
     throw new Error("employeeId is required for invoice creation");
   }
 
-  // Chuẩn bị mảng dữ liệu (items)
+  // Chuẩn bị danh sách món hàng để đưa vào @ItemsJson
+  // - Nếu có payload.items: dùng nguyên danh sách
+  // - Nếu không: tạo 1 dòng từ productCode/unitPrice/quantity
   const rawItems = Array.isArray(payload.items) && payload.items.length
     ? payload.items
     : [
@@ -243,15 +247,18 @@ async function createInvoice(payload) {
           productCode: payload.productCode,
           unitPrice: payload.unitPrice,
           quantity: payload.quantity,
-        },
+        },  
       ];
 
+  // Gộp các dòng trùng MaSP để cộng dồn số lượng, lấy đơn giá
+  // - DonGia = null nghĩa là dùng giá trong bảng HangHoa ở SQL
   const mergedByProduct = new Map();
   for (const rawItem of rawItems) {
     const productCode = String(rawItem?.productCode || "").trim();
     const quantity = Number(rawItem?.quantity || 0);
     const unitPrice = Number(rawItem?.unitPrice || 0);
 
+    // Validate tối thiểu để tránh proc báo lỗi sớm
     if (!productCode || quantity <= 0) {
       throw new Error("Each invoice item must include productCode and quantity > 0");
     }
@@ -274,7 +281,8 @@ async function createInvoice(payload) {
 
   const itemsPayload = Array.from(mergedByProduct.values());
 
-  // Thực thi Proc truyền vào JSON
+  // Thực thi proc: truyền MaHD, MaNV, ChiNhanhLap, ItemsJson
+  // Proc sẽ tự kiểm tra tồn kho, giá, và thực hiện insert/update theo transaction
   await pool
     .request()
     .input("MaHD", sql.VarChar(50), maHD)
@@ -284,7 +292,8 @@ async function createInvoice(payload) {
     .input("ItemsJson", sql.NVarChar(sql.MAX), JSON.stringify(itemsPayload))
     .execute(procs.createInvoiceLines);
 
-  // Lấy lại thông tin hóa đơn sau khi Proc chạy xong để trả về cho Frontend
+  // Đọc lại header + lines để trả về cho frontend
+  // - Có MaNV hay không tùy schema chi nhánh
   const hasMaNV = await hasHoaDonEmployeeColumnWithPool(pool);
   const header = await pool
     .request()
@@ -303,6 +312,7 @@ async function createInvoice(payload) {
         `,
     );
 
+  // Lấy chi tiết dòng hàng để tính tổng tiền và trả danh sách items
   const lines = await getInvoiceDetails(payload.branch, maHD);
   const totalAmount = lines.reduce((sum, line) => sum + Number(line.ThanhTien || 0), 0);
   const first = lines[0] || null;
@@ -337,172 +347,7 @@ async function createInvoice(payload) {
       : {}),
     NgayTao: new Date(hd.NgayTao || new Date()).toISOString(),
   };
-}
-
-// tác vụ toàn cục từ HUE/SAIGON/HANOI 
-
-/**
- * TỔNG QUAN DOANH THU TOÀN QUỐC & TỶ TRỌNG
-   Chức năng: Tính tổng doanh thu toàn hệ thống và phân bổ doanh thu theo từng chi nhánh.
-   Trách nhiệm UI: 
-   Các thẻ Card trên cùng (Cấp số liệu cho thẻ "Tổng doanh thu").
-  Biểu đồ cột: "So sánh doanh thu theo chi nhánh".
-  Biểu đồ tròn: "Tỷ trọng doanh thu".
- */
-
-async function getNationalRevenue(callerBranch) {
-  // Mock mode: trả dữ liệu giả để test giao diện/luồng API.
-  if (isMockMode()) return mock.revenueReport();
-
-  // Chuẩn hóa caller để rẽ nhánh đúng CENTRAL/BRANCH.
-  const normalizedCaller = String(callerBranch || "").trim().toUpperCase();
-
-  let rows;
-  let mode;
-  if (normalizedCaller === "CENTRAL") {
-    const pool = await getPool("CENTRAL");
-    // CENTRAL: gọi proc ở DB gốc, không đi qua linked server.truy vấn tại db CENTRALDB
-    rows = await executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuQuocGia");
-    mode = "SQL_SERVER_CENTRAL_PROC";
-  } else {
-    const pool = await getPool(normalizedCaller);
-    // BRANCH: đọc view toàn cục tại branch (view đã gom dữ liệu qua linked server).
-    const rs = await pool.request().query(`
-      SELECT ChiNhanh AS BranchCode, SUM(ThanhTien) AS Revenue
-      FROM dbo.v_HoaDonChiTiet_ToanQuoc
-      GROUP BY ChiNhanh;
-    `);
-    rows = rs.recordset || [];
-    mode = "SQL_SERVER_BRANCH_VIEW";
-  }
-
-  // Chuẩn hóa output về kiểu số để frontend render an toàn.
-  const byBranch = rows.map((row) => ({
-    branch: row.BranchCode,
-    revenue: Number(row.Revenue || 0),
-  }));
-  const nationalRevenue = byBranch.reduce((sum, item) => sum + item.revenue, 0);
-
-  return {
-    mode,
-    callerBranch: normalizedCaller,
-    generatedAt: new Date().toISOString(),
-    byBranch,
-    nationalRevenue,
-  };
-}
- 
-/**
-  PHÂN TÍCH CHUYÊN SÂU TOÀN QUỐC (NGÀY, TUẦN, XẾP HẠNG)
- Chức năng: Gọi song song 5 thủ tục để lấy luồng dữ liệu chuỗi thời gian và các bảng xếp hạng
- Trách nhiệm UI:
- Khu vực "Phân tích theo ngày và tuần": Cấp dữ liệu cho Biểu đồ đường (7 ngày gần nhất) và Biểu đồ cột (Theo tuần).
-  Các bảng xếp hạng "Top nhân viên, Sản phẩm bán chạy": Cấp dữ liệu cho Top Nhân viên xuất sắc và Top Sản phẩm bán chạy.
- */
-async function getCentralAnalyticsOverview(callerBranch, sourceBranch) {
-
-  if (isMockMode()) {
-    return {
-      mode: "MOCK",
-      analyticsSourceBranch: normalizeAnalyticsBranch(sourceBranch),
-      generatedAt: new Date().toISOString(),
-      daily: [],
-      weekly: [],
-      topEmployees: [],
-      topProducts: [],
-      weekCompare: [],
-    };
-  }
-
-  // Chuẩn hóa caller trước khi quyết định chạy proc central hay branch.
-  const normalizedCaller = String(callerBranch || "").trim().toUpperCase();
-  let analyticsSourceBranch;
-  let mode;
-  let dailyRows;
-  let weeklyRows;
-  let topEmployeeRows;
-  let topProductRows;
-  let compareRows;
-
-  if (normalizedCaller === "CENTRAL") {
-    const pool = await getPool("CENTRAL");
-    analyticsSourceBranch = "CENTRAL";
-    mode = "SQL_SERVER_CENTRAL_PROC";
-
-    // nếu là CENTRAL: toàn bộ analytics lấy qua các proc ở server trung tâm. proc này lấy dữ liệu Trực tiếp tại db trung tâm
-    [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
-      executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoNgay"),
-      executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoTuan"),
-      executeAnalyticsProcOnCentral(pool, "usp_Central_NhanVienBanTotNhatTuan"),
-      executeAnalyticsProcOnCentral(pool, "usp_Central_SanPhamBanChayNhat_MoiChiNhanh"),
-      executeAnalyticsProcOnCentral(pool, "usp_Central_SoSanhDoanhThuTuan"),
-    ]);
-  } else {
-    const pool = await getPool(normalizedCaller);
-    //  BRANCH: sourceBranch chỉ dùng để hiển thị nguồn đọc analytics trên UI.
-    analyticsSourceBranch = normalizeAnalyticsBranch(
-      sourceBranch || normalizedCaller || process.env.ANALYTICS_SP_SOURCE_BRANCH || "HUE",
-    );
-    mode = "SQL_SERVER_BRANCH_VIEW_PROC";
-
-    // nếu là chi nhánh BRANCH: gọi các proc analytics đã triển khai ở DB chi nhánh. proc này lấy dữ liệu qua link server ko cần vào db trung tâm
-    [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
-      executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoNgay"),
-      executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoTuan"),
-      executeAnalyticsProcOnBranch(pool, "usp_NhanVienBanTotNhatTuan"),
-      executeAnalyticsProcOnBranch(pool, "usp_SanPhamBanChayNhat_MoiChiNhanh"),
-      executeAnalyticsProcOnBranch(pool, "usp_SoSanhDoanhThuTuan"),
-    ]);
-  }
-
-  // Mapping recordset -> DTO trả cho frontend (thống nhất tên field + ép kiểu số).
-  const daily = dailyRows.map((row) => ({
-    branch: row.ChiNhanh,
-    date: row.Ngay,
-    totalOrders: Number(row.TongSoDonHang || 0),
-    totalRevenue: Number(row.TongDoanhThu || 0),
-  }));
-
-  const weekly = weeklyRows.map((row) => ({
-    branch: row.ChiNhanh,
-    year: Number(row.Nam || 0),
-    week: Number(row.TuanTrongNam || 0),
-    totalOrders: Number(row.TongSoDonHang || 0),
-    totalRevenue: Number(row.TongDoanhThu || 0),
-  }));
-
-  const topEmployees = topEmployeeRows.map((row) => ({
-    branch: row.ChiNhanh,
-    employeeId: row.MaNV,
-    employeeName: row.HoTen,
-    totalRevenue: Number(row.TongDoanhThu || 0),
-  }));
-
-  const topProducts = topProductRows.map((row) => ({
-    branch: row.ChiNhanh,
-    productCode: row.MaSP,
-    productName: row.TenHang,
-    totalSold: Number(row.TongSoLuongBan || 0),
-  }));
-
-  const weekCompare = compareRows.map((row) => ({
-    branch: row.ChiNhanh,
-    thisWeekRevenue: Number(row.DoanhThuTuanNay || 0),
-    lastWeekRevenue: Number(row.DoanhThuTuanTruoc || 0),
-  }));
-
-  return {
-    mode,
-    callerBranch: normalizedCaller,
-    analyticsSourceBranch,
-    generatedAt: new Date().toISOString(),
-    daily,
-    weekly,
-    topEmployees,
-    topProducts,
-    weekCompare,
-  };
-}
+} 
 
 /*
  * Liệt kê tồn kho cho chi nhánh. 
@@ -575,9 +420,13 @@ async function getProductByCode(branch, productCode) {
 }
 
 // lấy danh sách sản phẩm 
-async function listProducts(branch = "CENTRAL") {
+async function listProducts(branch) {
   if (isMockMode()) {
     return mock.listProducts();
+  }
+
+  if (!branch) {
+    throw new Error("branch is required");
   }
 
   // Kết nối thẳng vào DB của chi nhánh tương ứng
@@ -767,6 +616,175 @@ async function getBranchDashboard(branch) {
     generatedAt: new Date().toISOString(),
   };
 }
+
+
+
+// tác vụ toàn cục từ HUE/SAIGON/HANOI 
+
+/**
+ * TỔNG QUAN DOANH THU TOÀN QUỐC & TỶ TRỌNG
+   Chức năng: Tính tổng doanh thu toàn hệ thống và phân bổ doanh thu theo từng chi nhánh.
+   Trách nhiệm UI: 
+   Các thẻ Card trên cùng (Cấp số liệu cho thẻ "Tổng doanh thu").
+  Biểu đồ cột: "So sánh doanh thu theo chi nhánh".
+  Biểu đồ tròn: "Tỷ trọng doanh thu".
+ */
+
+async function getNationalRevenue(callerBranch) {
+  // Mock mode: trả dữ liệu giả để test giao diện/luồng API.
+  if (isMockMode()) return mock.revenueReport();
+
+  // Chuẩn hóa caller để rẽ nhánh đúng CENTRAL/BRANCH.
+  const normalizedCaller = String(callerBranch || "").trim().toUpperCase();
+
+  let rows;
+  let mode;
+  if (normalizedCaller === "CENTRAL") {
+    const pool = await getPool("CENTRAL");
+    // CENTRAL: gọi proc ở DB gốc, không đi qua linked server.truy vấn tại db CENTRALDB
+    rows = await executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuQuocGia");
+    mode = "SQL_SERVER_CENTRAL_PROC";
+  } else {
+    const pool = await getPool(normalizedCaller);
+    // BRANCH: đọc view toàn cục tại branch (view đã gom dữ liệu qua linked server).
+    const rs = await pool.request().query(`
+      SELECT ChiNhanh AS BranchCode, SUM(ThanhTien) AS Revenue
+      FROM dbo.v_HoaDonChiTiet_ToanQuoc
+      GROUP BY ChiNhanh;
+    `);
+    rows = rs.recordset || [];
+    mode = "SQL_SERVER_BRANCH_VIEW";
+  }
+
+  // Chuẩn hóa output về kiểu số để frontend render an toàn.
+  const byBranch = rows.map((row) => ({
+    branch: row.BranchCode,
+    revenue: Number(row.Revenue || 0),
+  }));
+  const nationalRevenue = byBranch.reduce((sum, item) => sum + item.revenue, 0);
+
+  return {
+    mode,
+    callerBranch: normalizedCaller,
+    generatedAt: new Date().toISOString(),
+    byBranch,
+    nationalRevenue,
+  };
+}
+ 
+/**
+  PHÂN TÍCH CHUYÊN SÂU TOÀN QUỐC (NGÀY, TUẦN, XẾP HẠNG)
+ Chức năng: Gọi song song 5 thủ tục để lấy luồng dữ liệu chuỗi thời gian và các bảng xếp hạng
+ Trách nhiệm UI:
+ Khu vực "Phân tích theo ngày và tuần": Cấp dữ liệu cho Biểu đồ đường (7 ngày gần nhất) và Biểu đồ cột (Theo tuần).
+  Các bảng xếp hạng "Top nhân viên, Sản phẩm bán chạy": Cấp dữ liệu cho Top Nhân viên xuất sắc và Top Sản phẩm bán chạy.
+ */
+async function getCentralAnalyticsOverview(callerBranch, sourceBranch) {
+
+  if (isMockMode()) {
+    return {
+      mode: "MOCK",
+      analyticsSourceBranch: normalizeAnalyticsBranch(sourceBranch),
+      generatedAt: new Date().toISOString(),
+      daily: [],
+      weekly: [],
+      topEmployees: [],
+      topProducts: [],
+      weekCompare: [],
+    };
+  }
+
+  // Chuẩn hóa caller trước khi quyết định chạy proc central hay branch.
+  const normalizedCaller = String(callerBranch || "").trim().toUpperCase();
+  let analyticsSourceBranch;
+  let mode;
+  let dailyRows;
+  let weeklyRows;
+  let topEmployeeRows;
+  let topProductRows;
+  let compareRows;
+
+  if (normalizedCaller === "CENTRAL") {
+    const pool = await getPool("CENTRAL");
+    analyticsSourceBranch = "CENTRAL";
+    mode = "SQL_SERVER_CENTRAL_PROC";
+
+    // nếu là CENTRAL: toàn bộ analytics lấy qua các proc ở server trung tâm. proc này lấy dữ liệu Trực tiếp tại db trung tâm
+    [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
+      executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoNgay"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_DoanhThuVaSoDon_TheoTuan"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_NhanVienBanTotNhatTuan"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_SanPhamBanChayNhat_MoiChiNhanh"),
+      executeAnalyticsProcOnCentral(pool, "usp_Central_SoSanhDoanhThuTuan"),
+    ]);
+  } else {
+    const pool = await getPool(normalizedCaller);
+    //  BRANCH: sourceBranch chỉ dùng để hiển thị nguồn đọc analytics trên UI.
+    analyticsSourceBranch = normalizeAnalyticsBranch(
+      sourceBranch || normalizedCaller || process.env.ANALYTICS_SP_SOURCE_BRANCH || "HUE",
+    );
+    mode = "SQL_SERVER_BRANCH_VIEW_PROC";
+
+    // nếu là chi nhánh BRANCH: gọi các proc analytics đã triển khai ở DB chi nhánh. proc này lấy dữ liệu qua link server ko cần vào db trung tâm
+    [dailyRows, weeklyRows, topEmployeeRows, topProductRows, compareRows] = await Promise.all([
+      executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoNgay"),
+      executeAnalyticsProcOnBranch(pool, "usp_DoanhThuVaSoDon_TheoTuan"),
+      executeAnalyticsProcOnBranch(pool, "usp_NhanVienBanTotNhatTuan"),
+      executeAnalyticsProcOnBranch(pool, "usp_SanPhamBanChayNhat_MoiChiNhanh"),
+      executeAnalyticsProcOnBranch(pool, "usp_SoSanhDoanhThuTuan"),
+    ]);
+  }
+
+  // Mapping recordset -> DTO trả cho frontend (thống nhất tên field + ép kiểu số).
+  const daily = dailyRows.map((row) => ({
+    branch: row.ChiNhanh,
+    date: row.Ngay,
+    totalOrders: Number(row.TongSoDonHang || 0),
+    totalRevenue: Number(row.TongDoanhThu || 0),
+  }));
+
+  const weekly = weeklyRows.map((row) => ({
+    branch: row.ChiNhanh,
+    year: Number(row.Nam || 0),
+    week: Number(row.TuanTrongNam || 0),
+    totalOrders: Number(row.TongSoDonHang || 0),
+    totalRevenue: Number(row.TongDoanhThu || 0),
+  }));
+
+  const topEmployees = topEmployeeRows.map((row) => ({
+    branch: row.ChiNhanh,
+    employeeId: row.MaNV,
+    employeeName: row.HoTen,
+    totalRevenue: Number(row.TongDoanhThu || 0),
+  }));
+
+  const topProducts = topProductRows.map((row) => ({
+    branch: row.ChiNhanh,
+    productCode: row.MaSP,
+    productName: row.TenHang,
+    totalSold: Number(row.TongSoLuongBan || 0),
+  }));
+
+  const weekCompare = compareRows.map((row) => ({
+    branch: row.ChiNhanh,
+    thisWeekRevenue: Number(row.DoanhThuTuanNay || 0),
+    lastWeekRevenue: Number(row.DoanhThuTuanTruoc || 0),
+  }));
+
+  return {
+    mode,
+    callerBranch: normalizedCaller,
+    analyticsSourceBranch,
+    generatedAt: new Date().toISOString(),
+    daily,
+    weekly,
+    topEmployees,
+    topProducts,
+    weekCompare,
+  };
+}
+
+
 //chuyển tồn kho 2 chi nhánh 
 async function transferStockDistributed(payload) {
   if (isMockMode()) {
